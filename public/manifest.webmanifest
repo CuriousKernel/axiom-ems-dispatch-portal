@@ -1,0 +1,14 @@
+{
+  "name": "Axiom-EMS",
+  "short_name": "Axiom-EMS",
+  "description": "Advisory ambulance corridor alerts for traffic officers, drivers and control room.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

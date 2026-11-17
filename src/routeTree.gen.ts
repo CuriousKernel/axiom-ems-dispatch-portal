@@ -10,33 +10,122 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ControlRouteImport } from './routes/control'
+import { Route as DriverRouteImport } from './routes/driver'
+import { Route as OfficerRouteImport } from './routes/officer'
+import { Route as ControlIndexRouteImport } from './routes/control.index'
+import { Route as ControlAnalyticsRouteImport } from './routes/control.analytics'
+import { Route as ControlJunctionsRouteImport } from './routes/control.junctions'
+import { Route as ControlOfficersRouteImport } from './routes/control.officers'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ControlRoute = ControlRouteImport.update({
+  id: '/control',
+  path: '/control',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DriverRoute = DriverRouteImport.update({
+  id: '/driver',
+  path: '/driver',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OfficerRoute = OfficerRouteImport.update({
+  id: '/officer',
+  path: '/officer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ControlIndexRoute = ControlIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ControlRoute,
+} as any)
+const ControlAnalyticsRoute = ControlAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => ControlRoute,
+} as any)
+const ControlJunctionsRoute = ControlJunctionsRouteImport.update({
+  id: '/junctions',
+  path: '/junctions',
+  getParentRoute: () => ControlRoute,
+} as any)
+const ControlOfficersRoute = ControlOfficersRouteImport.update({
+  id: '/officers',
+  path: '/officers',
+  getParentRoute: () => ControlRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/control': typeof ControlRouteWithChildren
+  '/driver': typeof DriverRoute
+  '/officer': typeof OfficerRoute
+  '/control/analytics': typeof ControlAnalyticsRoute
+  '/control/junctions': typeof ControlJunctionsRoute
+  '/control/officers': typeof ControlOfficersRoute
+  '/control/': typeof ControlIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/driver': typeof DriverRoute
+  '/officer': typeof OfficerRoute
+  '/control/analytics': typeof ControlAnalyticsRoute
+  '/control/junctions': typeof ControlJunctionsRoute
+  '/control/officers': typeof ControlOfficersRoute
+  '/control': typeof ControlIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/control': typeof ControlRouteWithChildren
+  '/driver': typeof DriverRoute
+  '/officer': typeof OfficerRoute
+  '/control/analytics': typeof ControlAnalyticsRoute
+  '/control/junctions': typeof ControlJunctionsRoute
+  '/control/officers': typeof ControlOfficersRoute
+  '/control/': typeof ControlIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/control'
+    | '/driver'
+    | '/officer'
+    | '/control/analytics'
+    | '/control/junctions'
+    | '/control/officers'
+    | '/control/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/driver'
+    | '/officer'
+    | '/control/analytics'
+    | '/control/junctions'
+    | '/control/officers'
+    | '/control'
+  id:
+    | '__root__'
+    | '/'
+    | '/control'
+    | '/driver'
+    | '/officer'
+    | '/control/analytics'
+    | '/control/junctions'
+    | '/control/officers'
+    | '/control/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ControlRoute: typeof ControlRouteWithChildren
+  DriverRoute: typeof DriverRoute
+  OfficerRoute: typeof OfficerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +137,80 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/control': {
+      id: '/control'
+      path: '/control'
+      fullPath: '/control'
+      preLoaderRoute: typeof ControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/driver': {
+      id: '/driver'
+      path: '/driver'
+      fullPath: '/driver'
+      preLoaderRoute: typeof DriverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/officer': {
+      id: '/officer'
+      path: '/officer'
+      fullPath: '/officer'
+      preLoaderRoute: typeof OfficerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/control/': {
+      id: '/control/'
+      path: '/'
+      fullPath: '/control/'
+      preLoaderRoute: typeof ControlIndexRouteImport
+      parentRoute: typeof ControlRoute
+    }
+    '/control/analytics': {
+      id: '/control/analytics'
+      path: '/analytics'
+      fullPath: '/control/analytics'
+      preLoaderRoute: typeof ControlAnalyticsRouteImport
+      parentRoute: typeof ControlRoute
+    }
+    '/control/junctions': {
+      id: '/control/junctions'
+      path: '/junctions'
+      fullPath: '/control/junctions'
+      preLoaderRoute: typeof ControlJunctionsRouteImport
+      parentRoute: typeof ControlRoute
+    }
+    '/control/officers': {
+      id: '/control/officers'
+      path: '/officers'
+      fullPath: '/control/officers'
+      preLoaderRoute: typeof ControlOfficersRouteImport
+      parentRoute: typeof ControlRoute
+    }
   }
 }
 
+interface ControlRouteChildren {
+  ControlAnalyticsRoute: typeof ControlAnalyticsRoute
+  ControlJunctionsRoute: typeof ControlJunctionsRoute
+  ControlOfficersRoute: typeof ControlOfficersRoute
+  ControlIndexRoute: typeof ControlIndexRoute
+}
+
+const ControlRouteChildren: ControlRouteChildren = {
+  ControlAnalyticsRoute: ControlAnalyticsRoute,
+  ControlJunctionsRoute: ControlJunctionsRoute,
+  ControlOfficersRoute: ControlOfficersRoute,
+  ControlIndexRoute: ControlIndexRoute,
+}
+
+const ControlRouteWithChildren =
+  ControlRoute._addFileChildren(ControlRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ControlRoute: ControlRouteWithChildren,
+  DriverRoute: DriverRoute,
+  OfficerRoute: OfficerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

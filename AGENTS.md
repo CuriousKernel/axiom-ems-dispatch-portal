@@ -28,3 +28,13 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules (Axiom-EMS)
+
+- Seed data and shared types live in `src/lib/axiom/`; screens read from there so the later simulator/realtime layer can replace the mock source in one place.
+- Leaflet code lives only in `src/components/axiom/CorridorMap.tsx`, loaded lazily via `MapFrame` behind `<ClientOnly>`; Leaflet touches `window` at import time and breaks SSR otherwise.
+- Map tiles use Esri Canvas (light/dark gray) because CARTO and OSM tile servers return placeholder/blocked tiles from shared hosts.
+- Leaflet SVG strokes are themed via CSS classes (`axm-path-*`), not `color` options, so they follow design tokens and dark mode.
+- `cn()` registers the custom font sizes (`text-title`, `text-display`, `text-hero`) with tailwind-merge; without it they are treated as colors and strip text color classes.
+- Control Room dark mode toggles `.dark` on `<html>` from the control layout and removes it on unmount, so phone screens always stay light.
+- The control room tabs are separate routes under `/control/*` sharing the `control.tsx` layout (sidebar, top bar, KPI strip).
