@@ -13,6 +13,12 @@
  * Alert lead-time rule:
  *   Alert must fire at least (officer_travel_time + LEAD_PADDING_S) before ETA.
  *   If not enough time, the alert is LATE_ALERT and escalated immediately.
+ *
+ * Hysteresis (anti-flapping):
+ *   A junction only resets from CRITICAL once it has stayed strictly below
+ *   CRITICAL for HYSTERESIS_TICKS consecutive ticks. Until then, prevStatus
+ *   is kept as CRITICAL so a brief dip to WATCH does not re-arm the trigger.
+ *   The engine must call advanceHysteresis() every tick with the raw status.
  */
 
 import type { JunctionStatus } from "@/lib/axiom/types";
@@ -30,6 +36,12 @@ export const CRITICALITY_CONFIG = {
   LEAD_PADDING_S: 30,
   /** How often the engine should recompute (milliseconds). */
   TICK_MS: 2000,
+  /**
+   * Anti-flapping: number of consecutive non-CRITICAL ticks required before
+   * a junction is allowed to re-arm its CRITICAL alert trigger.
+   * At TICK_MS=2000 ms, 3 ticks = 6 seconds of sustained recovery.
+   */
+  HYSTERESIS_TICKS: 3,
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -59,13 +71,66 @@ export interface CriticalityResult {
   dischargeRate: number;
 }
 
+// ─── Anti-flapping hysteresis state ───────────────────────────────────────
+
+/**
+ * Per-junction counter of consecutive ticks spent below CRITICAL.
+ * While this count is below HYSTERESIS_TICKS, prevStatus stays "CRITICAL"
+ * even if the raw reading recovered to WATCH or CLEAR.
+ *
+ * The engine holds one HysteresisState per junction and passes it into
+ * advanceHysteresis on every tick.
+ */
+export interface HysteresisState {
+  /** The status the alert system actually sees (may differ from raw status). */
+  confirmedStatus: JunctionStatus | null;
+  /** How many consecutive ticks the raw reading has been non-CRITICAL. */
+  recoveryTicks: number;
+}
+
+/**
+ * Advance hysteresis for one junction.
+ *
+ * Rules:
+ *  - If rawStatus is CRITICAL: reset recoveryTicks to 0, confirmedStatus → CRITICAL.
+ *  - If rawStatus is not CRITICAL and confirmedStatus was CRITICAL:
+ *      increment recoveryTicks. If recoveryTicks >= HYSTERESIS_TICKS,
+ *      confirmedStatus follows rawStatus (junction has genuinely recovered).
+ *  - If confirmedStatus was not CRITICAL: just track the raw status.
+ *
+ * Returns the updated HysteresisState.
+ */
+export function advanceHysteresis(
+  raw: JunctionStatus,
+  prev: HysteresisState,
+): HysteresisState {
+  if (raw === "CRITICAL") {
+    return { confirmedStatus: "CRITICAL", recoveryTicks: 0 };
+  }
+
+  // Raw is not CRITICAL.
+  if (prev.confirmedStatus === "CRITICAL") {
+    const ticks = prev.recoveryTicks + 1;
+    if (ticks >= CRITICALITY_CONFIG.HYSTERESIS_TICKS) {
+      // Genuinely recovered - release the CRITICAL lock.
+      return { confirmedStatus: raw, recoveryTicks: ticks };
+    }
+    // Still in the hysteresis window - stay locked as CRITICAL.
+    return { confirmedStatus: "CRITICAL", recoveryTicks: ticks };
+  }
+
+  // Was not CRITICAL before, just track.
+  return { confirmedStatus: raw, recoveryTicks: 0 };
+}
+
 // ─── Pure computation ─────────────────────────────────────────────────────
 
 /**
  * Compute the criticality result for a single junction.
  *
  * @param input         Junction readings and config.
- * @param prevStatus    The status from the previous tick (for transition detection).
+ * @param prevStatus    The hysteresis-confirmed status from the previous tick.
+ *                      Pass null on first tick. This is NOT the raw previous status.
  */
 export function computeCriticality(
   input: CriticalityInput,
@@ -89,7 +154,7 @@ export function computeCriticality(
     status = "CLEAR";
   }
 
-  // Alert fires only on the transition INTO CRITICAL.
+  // Alert fires only on the transition INTO CRITICAL (using hysteresis-confirmed prev).
   const isNewCritical = status === "CRITICAL" && prevStatus !== "CRITICAL";
 
   // Lead-time check: does the officer have enough time to arrive?
@@ -110,7 +175,7 @@ export function computeCriticality(
 
 /**
  * Batch-compute criticality for a list of junctions.
- * prevStatuses is a map from junctionId -> previous JunctionStatus.
+ * prevStatuses is a map from junctionId -> hysteresis-confirmed JunctionStatus.
  */
 export function computeAllCriticality(
   inputs: CriticalityInput[],
