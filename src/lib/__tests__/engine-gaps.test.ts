@@ -75,16 +75,17 @@ describe("GAP 1 — LATE_ALERT routes to control-room, not an officer", () => {
   it("alert for a junction with ample lead time routes to nearest officer, not control-room", () => {
     const { setDensity, tick } = useSimulator.getState();
 
-    // 'aiims' ETA=760s — plenty of lead time
-    // Set high density to make it critical
-    setDensity("aiims", 100);
+    // 'mandi' ETA=95s, officerTravelTime=20, LEAD_PADDING_S=30 -> needs 50s of lead.
+    // Density 100 -> 100 vehicles / 0.5 = 200s clear time -> CRITICAL, but 95 >= 50 so NOT late.
+    // (aiims can't be used: ETA 760s is unreachable with max 100 vehicles, so it stays CLEAR.)
+    setDensity("mandi", 100);
     tick();
 
     const { alerts } = useSimulator.getState();
-    const aimsAlerts = alerts.filter((a) => a.junctionId === "aiims");
-    expect(aimsAlerts.length).toBeGreaterThan(0);
+    const mandiAlerts = alerts.filter((a) => a.junctionId === "mandi");
+    expect(mandiAlerts.length).toBeGreaterThan(0);
 
-    for (const a of aimsAlerts) {
+    for (const a of mandiAlerts) {
       expect(a.isLateAlert).toBe(false);
       expect(a.officerId).not.toBe("control-room");
     }
@@ -106,14 +107,14 @@ describe("GAP 2 — 30-second NO_ACK timeout is called by the engine (not dead c
   it("alert advances from SENT to NO_ACK_TIMEOUT then back to SENT after timeout elapses", () => {
     const { setDensity, tick } = useSimulator.getState();
 
-    // Create a CRITICAL alert on aiims (ample ETA, routes to real officer)
-    setDensity("aiims", 100);
+    // Create a CRITICAL alert on mandi (ample lead time, routes to a real officer)
+    setDensity("mandi", 100);
     tick();
 
     const afterFirst = useSimulator.getState();
-    const aimsAlert = afterFirst.alerts.find((a) => a.junctionId === "aiims");
-    expect(aimsAlert).toBeDefined();
-    expect(aimsAlert!.state).toBe(AlertState.SENT);
+    const mandiAlert = afterFirst.alerts.find((a) => a.junctionId === "mandi");
+    expect(mandiAlert).toBeDefined();
+    expect(mandiAlert!.state).toBe(AlertState.SENT);
 
     // The alert was sent at Date.now(). Advance fake time beyond timeout.
     vi.advanceTimersByTime((ALERT_CONFIG.NO_ACK_TIMEOUT_S + 1) * 1000);
@@ -122,7 +123,7 @@ describe("GAP 2 — 30-second NO_ACK timeout is called by the engine (not dead c
     tick();
 
     const afterTimeout = useSimulator.getState();
-    const escalated = afterTimeout.alerts.find((a) => a.junctionId === "aiims");
+    const escalated = afterTimeout.alerts.find((a) => a.junctionId === "mandi");
     expect(escalated).toBeDefined();
 
     // After escalateNoAck the state machine goes:
@@ -135,7 +136,7 @@ describe("GAP 2 — 30-second NO_ACK timeout is called by the engine (not dead c
 
   it("alert NOT yet timed out stays in SENT state", () => {
     const { setDensity, tick } = useSimulator.getState();
-    setDensity("aiims", 100);
+    setDensity("mandi", 100);
     tick();
 
     // Advance time but NOT past the timeout
@@ -143,7 +144,7 @@ describe("GAP 2 — 30-second NO_ACK timeout is called by the engine (not dead c
     tick();
 
     const { alerts } = useSimulator.getState();
-    const a = alerts.find((a) => a.junctionId === "aiims");
+    const a = alerts.find((a) => a.junctionId === "mandi");
     expect(a!.state).toBe(AlertState.SENT);
     // Confirm NO_ACK_TIMEOUT is NOT in transitions
     expect(a!.transitions.map((t) => t.to)).not.toContain(AlertState.NO_ACK_TIMEOUT);
@@ -151,10 +152,10 @@ describe("GAP 2 — 30-second NO_ACK timeout is called by the engine (not dead c
 
   it("acknowledged alert is NOT escalated even after timeout window", () => {
     const { setDensity, tick, acknowledgeAlert } = useSimulator.getState();
-    setDensity("aiims", 100);
+    setDensity("mandi", 100);
     tick();
 
-    const alertId = useSimulator.getState().alerts.find((a) => a.junctionId === "aiims")!.id;
+    const alertId = useSimulator.getState().alerts.find((a) => a.junctionId === "mandi")!.id;
     acknowledgeAlert(alertId);
 
     // Advance past timeout
@@ -180,64 +181,51 @@ describe("GAP 3 — flapping: CRITICAL→WATCH→CRITICAL fires only one alert",
     vi.useRealTimers();
   });
 
-  it("exactly one alert for aiims through CRITICAL→WATCH→CRITICAL within hysteresis window", () => {
+  it("exactly one alert for mandi through CRITICAL->WATCH->CRITICAL within hysteresis window", () => {
     const { setDensity, tick } = useSimulator.getState();
+    const mandiAlerts = () =>
+      useSimulator.getState().alerts.filter((a) => a.junctionId === "mandi");
 
-    // Tick 1: HIGH density → CRITICAL (alert fires)
-    setDensity("aiims", 100);
+    // mandi: ETA=95s, discharge 0.5/s, buffer 10s, watch window 20s.
+    // density 100 -> 100 veh -> clear 200s -> CRITICAL.
+    // density 35  -> 35 veh  -> clear 70s  -> margin 95-(70+10)=15 -> WATCH.
+    setDensity("mandi", 100); // setDensity also ticks once
     tick();
-    const afterTick1 = useSimulator.getState();
-    const alertsAfter1 = afterTick1.alerts.filter((a) => a.junctionId === "aiims");
-    expect(alertsAfter1).toHaveLength(1);
+    expect(mandiAlerts()).toHaveLength(1);
 
-    // Tick 2: lower density briefly to WATCH (not fully cleared, within hysteresis)
-    // aiims: ETA=760, dischargeRate=0.5; to get WATCH: margin 0<x<=20
-    // clearTime + 10 + 20 >= ETA → clearTime >= 730 → queue >= 365; density~37
-    // For CLEAR: margin>20 → clearTime < 730 → queue < 365; use density=0 (all clear)
-    // We want WATCH, not CLEAR: clearTime in (730, 750): queue 365-375
-    // density for 365 vehicles: 365/100*100 = 365% > 100 → cap. Use density=37 → 37 veh → clearTime=74
-    // margin = 760 - (74+10) = 676 → CLEAR. Use aiims ETA=760. 
-    // For WATCH: 0 < 760-(clearTime+10) <= 20 → clearTime in [730,750].
-    // With dischargeRate=0.5: queue in [365,375]. Max density=100→100 veh. Can't reach 365 with max=100.
-    // So aiims can't be in WATCH at density=100. Use a different approach:
-    // Tick 2: density=0 → CLEAR (which is below CRITICAL), hysteresis kicks in.
-    setDensity("aiims", 0);
+    // Dip to WATCH for 2 ticks (< HYSTERESIS_TICKS=3): lock must hold.
+    setDensity("mandi", 35);
     tick();
+    expect(useSimulator.getState().readings.find((r) => r.junctionId === "mandi")?.status).toBe("WATCH");
+    expect(mandiAlerts()).toHaveLength(1);
 
-    const alertsAfter2 = useSimulator.getState().alerts.filter((a) => a.junctionId === "aiims");
-    // Still only 1 alert — no new alert just because we dipped to CLEAR
-    expect(alertsAfter2).toHaveLength(1);
-
-    // Tick 3: back to HIGH density → CRITICAL again
-    setDensity("aiims", 100);
+    // Back to CRITICAL inside the window: still exactly one alert.
+    setDensity("mandi", 100);
     tick();
-
-    const alertsAfter3 = useSimulator.getState().alerts.filter((a) => a.junctionId === "aiims");
-    // Should still be 1 alert if within hysteresis window (1 recovery tick < HYSTERESIS_TICKS=3)
-    expect(alertsAfter3).toHaveLength(1);
+    expect(mandiAlerts()).toHaveLength(1);
   });
 
   it("fires a SECOND alert only after full hysteresis recovery (HYSTERESIS_TICKS non-critical ticks)", () => {
     const { setDensity, tick } = useSimulator.getState();
 
     // Tick 1: CRITICAL
-    setDensity("aiims", 100);
+    setDensity("mandi", 100);
     tick();
-    expect(useSimulator.getState().alerts.filter((a) => a.junctionId === "aiims")).toHaveLength(1);
+    expect(useSimulator.getState().alerts.filter((a) => a.junctionId === "mandi")).toHaveLength(1);
 
     // Advance through HYSTERESIS_TICKS of CLEAR ticks to release the lock
-    setDensity("aiims", 0);
+    setDensity("mandi", 0);
     for (let i = 0; i < CRITICALITY_CONFIG.HYSTERESIS_TICKS; i++) {
       tick();
     }
     // Lock should be released now
     const afterRecovery = useSimulator.getState();
-    expect(afterRecovery.hysteresis["aiims"]?.confirmedStatus).toBe("CLEAR");
+    expect(afterRecovery.hysteresis["mandi"]?.confirmedStatus).toBe("CLEAR");
 
     // Now CRITICAL again → should fire a 2nd alert
-    setDensity("aiims", 100);
+    setDensity("mandi", 100);
     tick();
-    expect(useSimulator.getState().alerts.filter((a) => a.junctionId === "aiims")).toHaveLength(2);
+    expect(useSimulator.getState().alerts.filter((a) => a.junctionId === "mandi")).toHaveLength(2);
   });
 
   it("lowering slider on a CRITICAL junction does NOT create a new alert", () => {
