@@ -9,7 +9,8 @@ const ICONS = {
   WATCH:
     '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   CRITICAL: '<path d="M12 8v4"/><path d="M12 16h.01"/><circle cx="12" cy="12" r="9"/>',
-  AMBULANCE: '<path d="M12 6v12"/><path d="M6 12h12"/>',
+  PASSED: '<path d="M20 6 9 17l-5-5"/>',
+  AMBULANCE: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
 };
 
 const svg = (inner: string, w = 2.5) =>
@@ -104,6 +105,7 @@ export default function CorridorMap({
       ))}
 
       {junctions.map((j) => {
+        const statusKey = j.status in ICONS ? j.status : "CLEAR";
         const cls = `axm-junction axm-junction--${j.status.toLowerCase()} ${
           selectedJunctionId === j.id ? "axm-junction--selected" : ""
         }`;
@@ -113,7 +115,7 @@ export default function CorridorMap({
             position={[j.lat, j.lng]}
             icon={L.divIcon({
               className: "",
-              html: `<div class="${cls}" role="img" aria-label="${j.name}: ${j.status}">${svg(ICONS[j.status], 3)}</div>`,
+              html: `<div class="${cls}" role="img" aria-label="${j.name}: ${j.status}">${svg(ICONS[statusKey], 3)}</div>`,
               iconSize: [28, 28],
               iconAnchor: [14, 14],
             })}
@@ -134,7 +136,7 @@ export default function CorridorMap({
           zIndexOffset={1000}
           icon={L.divIcon({
             className: "",
-            html: `<div class="axm-ambulance" role="img" aria-label="Ambulance">${svg(ICONS.AMBULANCE, 3)}</div>`,
+            html: `<div class="axm-ambulance" style="transform: rotate(${ambulance.heading ?? 0}deg); transition: transform 0.2s ease;" role="img" aria-label="Ambulance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></div>`,
             iconSize: [30, 30],
             iconAnchor: [15, 15],
           })}

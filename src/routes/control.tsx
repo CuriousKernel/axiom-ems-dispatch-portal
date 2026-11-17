@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAxiom } from "@/lib/axiom/store";
+import { useSimulator } from "@/lib/simulator-engine";
 
 export const Route = createFileRoute("/control")({
   head: () => ({
@@ -99,7 +100,12 @@ function ControlLayout() {
 }
 
 function TopBar() {
-  const { source, setSource, speed, setSpeed, paused, togglePaused, controlDark, toggleControlDark } = useAxiom();
+  const { source, setSource, controlDark, toggleControlDark } = useAxiom();
+  const speed = useSimulator((s) => s.speed);
+  const setSpeed = useSimulator((s) => s.setSpeed);
+  const paused = useSimulator((s) => s.paused);
+  const togglePaused = useSimulator((s) => s.togglePaused);
+  const restartTrip = useSimulator((s) => s.restartTrip);
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur">
@@ -164,7 +170,15 @@ function TopBar() {
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Restart" onClick={() => toast("Simulation restarts once the clock is built.")}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Restart"
+              onClick={() => {
+                restartTrip();
+                toast("Simulation restarted from Connaught Place");
+              }}
+            >
               <RotateCcw />
             </Button>
           </TooltipTrigger>

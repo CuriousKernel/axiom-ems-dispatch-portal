@@ -1,4 +1,4 @@
-export type JunctionStatus = "CLEAR" | "WATCH" | "CRITICAL";
+export type JunctionStatus = "CLEAR" | "WATCH" | "CRITICAL" | "PASSED";
 
 export type AlertState =
   | "CREATED"

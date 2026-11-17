@@ -1,36 +1,40 @@
 /**
  * src/components/axiom/SimulatorPanel.tsx
  *
- * Phase 2 control panel: density sliders per junction + scenario buttons.
+ * Phase 3 control panel: density sliders per junction, scenario buttons,
+ * and trip controls (start / restart trip).
  * Renders in the Live tab of the Control Room.
- *
- * Rules followed:
- * - No new styles, only existing Tailwind utility classes and design tokens.
- * - Reads from useSimulator (Zustand), which owns a SimulatedSource internally.
- * - The panel is the ONLY React code that imports simulator-engine; everything
- *   else depends on the QueueSource interface.
  */
 
 import { useEffect } from "react";
-import { Gauge } from "lucide-react";
+import { Gauge, Play, RotateCcw } from "lucide-react";
 import { StatusChip } from "@/components/axiom/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDuration } from "@/lib/axiom/format";
-import { useSimulator, type JunctionLiveReading } from "@/lib/simulator-engine";
+import { useSimulator } from "@/lib/simulator-engine";
+import type { JunctionSimReading } from "@/lib/sim-transport";
 import type { ScenarioName } from "@/lib/sources/simulated";
 
 const SCENARIOS: ScenarioName[] = ["Jam Mandi House", "Jam ITO", "Clear all"];
 
 export function SimulatorPanel() {
-  const { readings, startTicking, stopTicking, setDensity, applyScenario } = useSimulator();
+  const readings = useSimulator((s) => s.readings);
+  const startEngine = useSimulator((s) => s.startEngine);
+  const stopEngine = useSimulator((s) => s.stopEngine);
+  const setDensity = useSimulator((s) => s.setDensity);
+  const applyScenario = useSimulator((s) => s.applyScenario);
+  const ambulance = useSimulator((s) => s.ambulance);
+  const startTrip = useSimulator((s) => s.startTrip);
+  const restartTrip = useSimulator((s) => s.restartTrip);
 
-  // Start the 2-second tick when this panel mounts; stop on unmount.
   useEffect(() => {
-    startTicking();
-    return () => stopTicking();
-  }, [startTicking, stopTicking]);
+    startEngine();
+    return () => stopEngine();
+  }, [startEngine, stopEngine]);
+
+  const readingList = Object.values(readings);
 
   return (
     <Card className="rounded-lg shadow-none">
@@ -39,7 +43,19 @@ export function SimulatorPanel() {
           <Gauge className="size-4 text-muted-foreground" aria-hidden />
           Simulator controls
         </CardTitle>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {ambulance.status === "idle" && (
+            <Button size="sm" onClick={startTrip} className="gap-1.5 text-xs">
+              <Play className="size-3.5" aria-hidden />
+              Start trip
+            </Button>
+          )}
+          {ambulance.status === "arrived" && (
+            <Button size="sm" variant="outline" onClick={restartTrip} className="gap-1.5 text-xs">
+              <RotateCcw className="size-3.5" aria-hidden />
+              Restart trip
+            </Button>
+          )}
           {SCENARIOS.map((s) => (
             <Button
               key={s}
@@ -56,7 +72,7 @@ export function SimulatorPanel() {
 
       <CardContent className="px-4 pb-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {readings.map((r) => (
+          {readingList.map((r) => (
             <JunctionSlider key={r.junctionId} reading={r} onDensity={setDensity} />
           ))}
         </div>
@@ -69,7 +85,7 @@ function JunctionSlider({
   reading,
   onDensity,
 }: {
-  reading: JunctionLiveReading;
+  reading: JunctionSimReading;
   onDensity: (id: string, density: number) => void;
 }) {
   return (
@@ -93,7 +109,9 @@ function JunctionSlider({
         <span>
           {reading.vehicleCount} veh · {formatDuration(reading.clearTime)}
         </span>
-        <span>ETA {formatDuration(reading.eta)}</span>
+        <span>
+          {reading.status === "PASSED" ? "PASSED" : `ETA ${formatDuration(reading.eta)}`}
+        </span>
       </div>
     </div>
   );

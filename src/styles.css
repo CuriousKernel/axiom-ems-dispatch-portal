@@ -253,6 +253,10 @@
 .axm-junction--critical {
   background: var(--critical);
 }
+.axm-junction--passed {
+  background: var(--muted-foreground);
+  opacity: 0.5;
+}
 .axm-junction--selected {
   outline: 3px solid var(--ring);
   outline-offset: 2px;

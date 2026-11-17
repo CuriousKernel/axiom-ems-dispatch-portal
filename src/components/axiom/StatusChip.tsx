@@ -29,6 +29,7 @@ export const STATUS_META: Record<JunctionStatus, { label: string; tone: Tone; ic
   CLEAR: { label: "Clear", tone: "clear", icon: CircleCheck },
   WATCH: { label: "Watch", tone: "watch", icon: TriangleAlert },
   CRITICAL: { label: "Critical", tone: "critical", icon: OctagonAlert },
+  PASSED: { label: "Passed", tone: "neutral", icon: CircleCheck },
 };
 
 export function Chip({

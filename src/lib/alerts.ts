@@ -46,7 +46,7 @@ export const LEGAL_TRANSITIONS: Readonly<Record<AlertState, readonly AlertState[
   [AlertState.CREATED]: [AlertState.SENT],
   [AlertState.SENT]: [AlertState.ACKNOWLEDGED, AlertState.NO_ACK_TIMEOUT],
   [AlertState.ACKNOWLEDGED]: [AlertState.IN_POSITION, AlertState.NOT_CLEARED],
-  [AlertState.IN_POSITION]: [AlertState.CLEARING],
+  [AlertState.IN_POSITION]: [AlertState.CLEARING, AlertState.NOT_CLEARED],
   [AlertState.CLEARING]: [AlertState.VERIFIED_CLEAR, AlertState.NOT_CLEARED],
   [AlertState.VERIFIED_CLEAR]: [],
   [AlertState.NO_ACK_TIMEOUT]: [AlertState.SENT],      // re-sent after escalation

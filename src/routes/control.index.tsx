@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BellOff, Circle, CircleCheck, ScrollText, UserRound, VideoOff } from "lucide-react";
 import { ClearTimeChart } from "@/components/axiom/ClearTimeChart";
 import { EmptyState } from "@/components/axiom/EmptyState";
@@ -8,11 +8,12 @@ import { SimulatorPanel } from "@/components/axiom/SimulatorPanel";
 import { Chip, StatusChip } from "@/components/axiom/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { corridorWithStatus, ROUTE_PREVIEW } from "@/lib/axiom/corridor";
 import { formatDuration, formatSimTime } from "@/lib/axiom/format";
-import { ORIGIN, MOCK_EVENTS, OFFICERS, junctionById, officerById, officersAt, readingFor } from "@/lib/axiom/seed";
+import { JUNCTIONS, OFFICERS, junctionById, officerById, officersAt, readingFor } from "@/lib/axiom/seed";
 import { useAxiom } from "@/lib/axiom/store";
 import { useSimulator } from "@/lib/simulator-engine";
+import { PRIMARY_ROUTE } from "@/lib/route-data";
+import type { JunctionStatus, LatLng } from "@/lib/axiom/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/control/")({
@@ -34,16 +35,67 @@ function LivePage() {
   const selected = useAxiom((s) => s.selectedJunctionId);
   const select = useAxiom((s) => s.selectJunction);
 
+  const ambulance = useSimulator((s) => s.ambulance);
+  const readings = useSimulator((s) => s.readings);
+  const startEngine = useSimulator((s) => s.startEngine);
+  const stopEngine = useSimulator((s) => s.stopEngine);
+
+  // Start engine host on mount, clean up on unmount
+  useEffect(() => {
+    startEngine();
+    return () => stopEngine();
+  }, [startEngine, stopEngine]);
+
+  // Compute live junctions with dynamic status
+  const liveJunctions = useMemo(() => {
+    return JUNCTIONS.map((j) => {
+      const r = readings[j.id];
+      const status: JunctionStatus = r ? r.status : "CLEAR";
+      return {
+        ...j,
+        status,
+      };
+    });
+  }, [readings]);
+
+  // Split PRIMARY_ROUTE into traveled (green) and ahead (gray)
+  const { traveled, ahead } = useMemo(() => {
+    const currentDist = ambulance.distanceMeters;
+    const trav: LatLng[] = [];
+    const ah: LatLng[] = [];
+
+    for (const pt of PRIMARY_ROUTE.points) {
+      if (pt.cumulativeDistanceMeters <= currentDist) {
+        trav.push({ lat: pt.lat, lng: pt.lng });
+      } else {
+        ah.push({ lat: pt.lat, lng: pt.lng });
+      }
+    }
+
+    // Connect them at the ambulance position
+    if (trav.length > 0 && ah.length > 0) {
+      trav.push({ lat: ambulance.lat, lng: ambulance.lng });
+      ah.unshift({ lat: ambulance.lat, lng: ambulance.lng });
+    }
+
+    return { traveled: trav, ahead: ah };
+  }, [ambulance.distanceMeters, ambulance.lat, ambulance.lng]);
+
   return (
     <>
       <div className="grid grid-cols-[65fr_35fr] gap-4">
         <Card className="relative min-h-[600px] overflow-hidden rounded-lg p-0 shadow-none">
           <MapFrame
             className="absolute inset-0"
-            junctions={corridorWithStatus()}
+            junctions={liveJunctions}
             officers={OFFICERS}
-            ambulance={ORIGIN}
-            ahead={ROUTE_PREVIEW}
+            ambulance={{
+              lat: ambulance.lat,
+              lng: ambulance.lng,
+              heading: ambulance.heading,
+            }}
+            traveled={traveled}
+            ahead={ahead}
             selectedJunctionId={selected}
             onSelectJunction={select}
             dark={dark}
@@ -57,7 +109,7 @@ function LivePage() {
         </div>
       </div>
 
-      {/* Phase 2: simulator control panel */}
+      {/* Simulator controls */}
       <SimulatorPanel />
 
       <EventLog />
@@ -71,10 +123,11 @@ function MapLegend() {
       <StatusChip status="CLEAR" />
       <StatusChip status="WATCH" />
       <StatusChip status="CRITICAL" />
+      <StatusChip status="PASSED" />
       <span className="ml-1 inline-flex items-center gap-1.5 text-muted-foreground">
         <span className="axm-officer inline-block" /> Officer
       </span>
-      <span className="text-muted-foreground">Route preview: straight lines (road route in Phase 2)</span>
+      <span className="text-muted-foreground">OSRM Road corridor (Connaught Place → AIIMS)</span>
     </div>
   );
 }
@@ -83,9 +136,8 @@ function AlertQueue() {
   const select = useAxiom((s) => s.selectJunction);
   const [showAll, setShowAll] = useState(false);
 
-  // Phase 2: use live simulator alerts. Fallback to empty when none yet.
-  const simAlerts = useSimulator((s) => s.alerts);
-  const alerts = simAlerts;
+  const alerts = useSimulator((s) => s.alerts);
+  const readings = useSimulator((s) => s.readings);
   const visible = showAll ? alerts : alerts.slice(0, 5);
 
   return (
@@ -102,7 +154,7 @@ function AlertQueue() {
             {visible.map((a) => {
               const j = junctionById(a.junctionId);
               const o = officerById(a.officerId);
-              const liveReading = readingFor(a.junctionId);
+              const reading = readings[a.junctionId];
               if (!j) return null;
               return (
                 <li key={a.id}>
@@ -110,7 +162,7 @@ function AlertQueue() {
                     onClick={() => select(a.junctionId)}
                     className="flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-accent"
                   >
-                    <StatusChip status={liveReading?.status ?? "CRITICAL"} />
+                    <StatusChip status={reading?.status ?? "CRITICAL"} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{j.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">
@@ -136,25 +188,57 @@ function AlertQueue() {
   );
 }
 
-const TIMELINE = [
-  { label: "Created", at: 42 },
-  { label: "Sent", at: 42 },
-  { label: "Acknowledged", at: null },
-  { label: "In position", at: null },
-  { label: "Verified clear", at: null },
-];
-
 function JunctionDetail() {
   const id = useAxiom((s) => s.selectedJunctionId);
   const j = junctionById(id)!;
-  const r = readingFor(id)!;
+  const liveReadings = useSimulator((s) => s.readings);
+  const liveReading = liveReadings[id];
 
-  // Phase 2: check if there's a live simulator alert for this junction
+  // Fallback to static seed reading if engine hasn't populated yet
+  const staticFallback = readingFor(id)!;
+  const r = liveReading
+    ? {
+        junctionId: id,
+        queueCount: liveReading.vehicleCount,
+        clearTime: liveReading.clearTime,
+        eta: liveReading.eta,
+        status: liveReading.status,
+        source: "simulator" as const,
+      }
+    : staticFallback;
+
   const simAlerts = useSimulator((s) => s.alerts);
   const liveAlert = simAlerts.find((a) => a.junctionId === id);
   const officer = liveAlert
     ? officerById(liveAlert.officerId)
     : officersAt(id).find((o) => o.online);
+
+  // Build timeline from transitions if liveAlert exists
+  const timeline = useMemo(() => {
+    if (!liveAlert) return [];
+    return [
+      {
+        label: "Created",
+        at: liveAlert.transitions.find((t) => t.to === "CREATED")?.at ?? liveAlert.createdAt,
+      },
+      {
+        label: "Sent",
+        at: liveAlert.transitions.find((t) => t.to === "SENT")?.at ?? null,
+      },
+      {
+        label: "Acknowledged",
+        at: liveAlert.transitions.find((t) => t.to === "ACKNOWLEDGED")?.at ?? null,
+      },
+      {
+        label: "In position",
+        at: liveAlert.transitions.find((t) => t.to === "IN_POSITION")?.at ?? null,
+      },
+      {
+        label: "Verified clear",
+        at: liveAlert.transitions.find((t) => t.to === "VERIFIED_CLEAR")?.at ?? null,
+      },
+    ];
+  }, [liveAlert]);
 
   return (
     <Card className="flex-1 rounded-lg shadow-none">
@@ -167,7 +251,7 @@ function JunctionDetail() {
           {[
             { k: "Queue", v: `${r.queueCount}` },
             { k: "Clear time", v: formatDuration(r.clearTime) },
-            { k: "Ambulance ETA", v: formatDuration(r.eta) },
+            { k: "Ambulance ETA", v: r.status === "PASSED" ? "PASSED" : formatDuration(r.eta) },
           ].map((m) => (
             <div key={m.k} className="rounded-md bg-muted px-3 py-2">
               <dt className="text-xs text-muted-foreground">{m.k}</dt>
@@ -177,7 +261,7 @@ function JunctionDetail() {
         </dl>
 
         <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Clear time vs ETA, last 60 s (sample)</p>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">Clear time vs ETA, last 60 s</p>
           <ClearTimeChart reading={r} />
         </div>
 
@@ -199,7 +283,7 @@ function JunctionDetail() {
 
         {liveAlert && (
           <ol className="flex flex-col gap-2">
-            {TIMELINE.map((step) => (
+            {timeline.map((step) => (
               <li key={step.label} className="flex items-center gap-2 text-sm">
                 {step.at != null ? (
                   <CircleCheck className="size-4 text-primary" aria-hidden />
@@ -207,7 +291,9 @@ function JunctionDetail() {
                   <Circle className="size-4 text-muted-foreground" aria-hidden />
                 )}
                 <span className={cn("flex-1", step.at == null && "text-muted-foreground")}>{step.label}</span>
-                <span className="tnum text-xs text-muted-foreground">{step.at != null ? formatSimTime(step.at) : "Pending"}</span>
+                <span className="tnum text-xs text-muted-foreground">
+                  {step.at != null ? "Done" : "Pending"}
+                </span>
               </li>
             ))}
           </ol>
@@ -219,20 +305,10 @@ function JunctionDetail() {
 
 function EventLog() {
   const [showAll, setShowAll] = useState(false);
+  const events = useSimulator((s) => s.events);
 
-  // Merge Phase 2 simulator events with Phase 1 mock events.
-  const simEvents = useSimulator((s) => s.events);
-  const allEvents = [
-    ...simEvents.map((e) => ({
-      id: e.id,
-      t: Math.floor((e.at - Date.now()) / 1000),
-      type: e.type as "trip" | "status" | "alert" | "officer" | "system",
-      message: e.message,
-    })),
-    ...MOCK_EVENTS,
-  ];
+  const visible = showAll ? events : events.slice(0, 5);
 
-  const visible = showAll ? allEvents : allEvents.slice(0, 5);
   return (
     <Card className="rounded-lg shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
@@ -240,7 +316,7 @@ function EventLog() {
           <ScrollText className="size-4 text-muted-foreground" aria-hidden />
           Event log
         </CardTitle>
-        {allEvents.length > 5 && (
+        {events.length > 5 && (
           <Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)}>
             {showAll ? "Show less" : "View all"}
           </Button>
@@ -251,7 +327,7 @@ function EventLog() {
           {visible.map((e) => (
             <li key={e.id} className="flex items-center gap-4 py-2 text-sm">
               <span className="tnum w-16 shrink-0 text-xs text-muted-foreground">
-                {e.t >= 0 ? formatSimTime(e.t) : "now"}
+                {e.at >= 0 ? formatSimTime(Math.round(e.at)) : "now"}
               </span>
               <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">{e.type}</span>
               <span className="min-w-0 flex-1 truncate">{e.message}</span>

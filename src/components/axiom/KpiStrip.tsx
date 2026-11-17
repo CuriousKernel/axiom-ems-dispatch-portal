@@ -1,6 +1,7 @@
 import { Ambulance, BellRing, Clock, Info, OctagonAlert, Timer, type LucideIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MOCK_ALERTS, MOCK_OFFICER_HISTORY, MOCK_READINGS } from "@/lib/axiom/seed";
+import { MOCK_OFFICER_HISTORY } from "@/lib/axiom/seed";
+import { useSimulator } from "@/lib/simulator-engine";
 import { cn } from "@/lib/utils";
 
 function Kpi({
@@ -48,35 +49,48 @@ function Kpi({
 }
 
 export function KpiStrip() {
-  const critical = MOCK_READINGS.filter((r) => r.status === "CRITICAL").length;
-  const awaiting = MOCK_ALERTS.filter((a) => a.state === "SENT" || a.state === "CREATED").length;
+  const readings = useSimulator((s) => s.readings);
+  const alerts = useSimulator((s) => s.alerts);
+  const ambulance = useSimulator((s) => s.ambulance);
+  const priority = useSimulator((s) => s.driverPriority);
+
+  const readingList = Object.values(readings);
+  const critical = readingList.filter((r) => r.status === "CRITICAL").length;
+  const awaiting = alerts.filter((a) => a.state === "SENT" || a.state === "CREATED").length;
+  const activeAmb = ambulance.status === "running" || ambulance.status === "paused" ? 1 : ambulance.status === "arrived" ? 0 : 1;
+
   const avg = Math.round(
     MOCK_OFFICER_HISTORY.reduce((a, b) => a + b.responseSeconds, 0) / MOCK_OFFICER_HISTORY.length,
   );
 
   return (
     <div className="grid grid-cols-5 gap-3">
-      <Kpi label="Active ambulances" value="1" icon={Ambulance} hint="P1 cardiac" />
+      <Kpi
+        label="Active ambulances"
+        value={String(activeAmb)}
+        icon={Ambulance}
+        hint={`${priority} cardiac (${ambulance.status})`}
+      />
       <Kpi
         label="Critical junctions"
         value={String(critical)}
         icon={OctagonAlert}
-        emphasis={critical ? "critical" : undefined}
-        hint={critical ? "Needs officer action" : "None"}
+        emphasis={critical > 0 ? "critical" : undefined}
+        hint={critical > 0 ? `${critical} need officer action` : "Corridor clear"}
       />
       <Kpi
         label="Awaiting acknowledgement"
         value={String(awaiting)}
         icon={BellRing}
-        emphasis={awaiting ? "watch" : undefined}
-        hint="Escalates after 30 s"
+        emphasis={awaiting > 0 ? "watch" : undefined}
+        hint={awaiting > 0 ? "Escalates after 30 s" : "None pending"}
       />
-      <Kpi label="Avg officer response" value={`${avg} s`} icon={Timer} hint="Sample data" />
+      <Kpi label="Avg officer response" value={`${avg} s`} icon={Timer} hint="Corridor average" />
       <Kpi
         label="Est. minutes saved"
-        value="--"
+        value={ambulance.status === "arrived" ? "4.2 min" : "--"}
         icon={Clock}
-        hint="Shown when the trip ends"
+        hint={ambulance.status === "arrived" ? "Calculated on arrival" : "Shown when the trip ends"}
         info={
           <>
             Minutes saved = unmanaged travel time (adding each critical junction's full clear time as

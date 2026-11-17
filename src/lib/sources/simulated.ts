@@ -53,12 +53,23 @@ export class SimulatedSource implements QueueSource {
 
   /** Set density for one junction (clamped to 0–100). */
   setDensity(junctionId: string, density: number): void {
-    this.densities.set(junctionId, Math.max(0, Math.min(100, density)));
+    this.densities.set(junctionId, Math.max(0, Math.min(100, Math.round(density))));
   }
 
   /** Get density for one junction. */
   getDensity(junctionId: string): number {
     return this.densities.get(junctionId) ?? 0;
+  }
+
+  /**
+   * Drain queue by a specific number of vehicles (e.g. when officer is clearing).
+   */
+  drain(junctionId: string, vehicleCountDelta: number): void {
+    const currentDensity = this.getDensity(junctionId);
+    const currentVehicles = Math.round((currentDensity * MAX_VEHICLES_PER_JUNCTION) / 100);
+    const nextVehicles = Math.max(0, currentVehicles - vehicleCountDelta);
+    const nextDensity = (nextVehicles * 100) / MAX_VEHICLES_PER_JUNCTION;
+    this.setDensity(junctionId, nextDensity);
   }
 
   /** Apply a named scenario preset. */
