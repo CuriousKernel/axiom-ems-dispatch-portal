@@ -4,13 +4,15 @@ import { BellOff, Circle, CircleCheck, ScrollText, UserRound, VideoOff } from "l
 import { ClearTimeChart } from "@/components/axiom/ClearTimeChart";
 import { EmptyState } from "@/components/axiom/EmptyState";
 import { MapFrame } from "@/components/axiom/MapFrame";
+import { SimulatorPanel } from "@/components/axiom/SimulatorPanel";
 import { Chip, StatusChip } from "@/components/axiom/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { corridorWithStatus, ROUTE_PREVIEW } from "@/lib/axiom/corridor";
 import { formatDuration, formatSimTime } from "@/lib/axiom/format";
-import { ORIGIN, MOCK_ALERTS, MOCK_EVENTS, OFFICERS, junctionById, officerById, officersAt, readingFor } from "@/lib/axiom/seed";
+import { ORIGIN, MOCK_EVENTS, OFFICERS, junctionById, officerById, officersAt, readingFor } from "@/lib/axiom/seed";
 import { useAxiom } from "@/lib/axiom/store";
+import { useSimulator } from "@/lib/simulator-engine";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/control/")({
@@ -55,6 +57,9 @@ function LivePage() {
         </div>
       </div>
 
+      {/* Phase 2: simulator control panel */}
+      <SimulatorPanel />
+
       <EventLog />
     </>
   );
@@ -77,7 +82,10 @@ function MapLegend() {
 function AlertQueue() {
   const select = useAxiom((s) => s.selectJunction);
   const [showAll, setShowAll] = useState(false);
-  const alerts = MOCK_ALERTS;
+
+  // Phase 2: use live simulator alerts. Fallback to empty when none yet.
+  const simAlerts = useSimulator((s) => s.alerts);
+  const alerts = simAlerts;
   const visible = showAll ? alerts : alerts.slice(0, 5);
 
   return (
@@ -92,24 +100,26 @@ function AlertQueue() {
         ) : (
           <ul className="flex flex-col">
             {visible.map((a) => {
-              const j = junctionById(a.junctionId)!;
-              const o = officerById(a.officerId)!;
+              const j = junctionById(a.junctionId);
+              const o = officerById(a.officerId);
+              const liveReading = readingFor(a.junctionId);
+              if (!j) return null;
               return (
                 <li key={a.id}>
                   <button
                     onClick={() => select(a.junctionId)}
                     className="flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-accent"
                   >
-                    <StatusChip status={readingFor(a.junctionId)!.status} />
+                    <StatusChip status={liveReading?.status ?? "CRITICAL"} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{j.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {o.rank} {o.name} · {a.state.replace("_", " ").toLowerCase()}
+                        {o ? `${o.rank} ${o.name}` : a.officerId} · {a.state.replace(/_/g, " ").toLowerCase()}
+                        {a.isLateAlert && (
+                          <span className="ml-1 font-medium text-critical-ink">· LATE</span>
+                        )}
                       </span>
                     </span>
-                    {a.escalatesIn != null && (
-                      <span className="tnum text-xs font-medium text-watch-ink">Escalates in {formatDuration(a.escalatesIn)}</span>
-                    )}
                   </button>
                 </li>
               );
@@ -138,8 +148,13 @@ function JunctionDetail() {
   const id = useAxiom((s) => s.selectedJunctionId);
   const j = junctionById(id)!;
   const r = readingFor(id)!;
-  const alert = MOCK_ALERTS.find((a) => a.junctionId === id);
-  const officer = alert ? officerById(alert.officerId) : officersAt(id).find((o) => o.online);
+
+  // Phase 2: check if there's a live simulator alert for this junction
+  const simAlerts = useSimulator((s) => s.alerts);
+  const liveAlert = simAlerts.find((a) => a.junctionId === id);
+  const officer = liveAlert
+    ? officerById(liveAlert.officerId)
+    : officersAt(id).find((o) => o.online);
 
   return (
     <Card className="flex-1 rounded-lg shadow-none">
@@ -182,7 +197,7 @@ function JunctionDetail() {
           {officer && <Chip tone={officer.online ? "clear" : "neutral"}>{officer.online ? "Online" : "Offline"}</Chip>}
         </div>
 
-        {alert && (
+        {liveAlert && (
           <ol className="flex flex-col gap-2">
             {TIMELINE.map((step) => (
               <li key={step.label} className="flex items-center gap-2 text-sm">
@@ -204,8 +219,20 @@ function JunctionDetail() {
 
 function EventLog() {
   const [showAll, setShowAll] = useState(false);
-  const events = [...MOCK_EVENTS].reverse();
-  const visible = showAll ? events : events.slice(0, 5);
+
+  // Merge Phase 2 simulator events with Phase 1 mock events.
+  const simEvents = useSimulator((s) => s.events);
+  const allEvents = [
+    ...simEvents.map((e) => ({
+      id: e.id,
+      t: Math.floor((e.at - Date.now()) / 1000),
+      type: e.type as "trip" | "status" | "alert" | "officer" | "system",
+      message: e.message,
+    })),
+    ...MOCK_EVENTS,
+  ];
+
+  const visible = showAll ? allEvents : allEvents.slice(0, 5);
   return (
     <Card className="rounded-lg shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
@@ -213,7 +240,7 @@ function EventLog() {
           <ScrollText className="size-4 text-muted-foreground" aria-hidden />
           Event log
         </CardTitle>
-        {events.length > 5 && (
+        {allEvents.length > 5 && (
           <Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)}>
             {showAll ? "Show less" : "View all"}
           </Button>
@@ -223,7 +250,9 @@ function EventLog() {
         <ul className="divide-y">
           {visible.map((e) => (
             <li key={e.id} className="flex items-center gap-4 py-2 text-sm">
-              <span className="tnum w-16 shrink-0 text-xs text-muted-foreground">{formatSimTime(e.t)}</span>
+              <span className="tnum w-16 shrink-0 text-xs text-muted-foreground">
+                {e.t >= 0 ? formatSimTime(e.t) : "now"}
+              </span>
               <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">{e.type}</span>
               <span className="min-w-0 flex-1 truncate">{e.message}</span>
             </li>
