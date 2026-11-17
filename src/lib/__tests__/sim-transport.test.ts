@@ -53,6 +53,8 @@ function makeSampleState(): SimulationState {
     events: [
       { id: "e1", at: 1000, type: "system", message: "Simulation started" },
     ],
+    activeRouteId: "primary",
+    rerouted: false,
     hostTimestamp: 123456789,
   };
 }

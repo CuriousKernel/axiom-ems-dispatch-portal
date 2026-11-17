@@ -187,6 +187,7 @@ function TopBar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <ConnectionChip />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" onClick={toggleControlDark} aria-label="Toggle dark mode">

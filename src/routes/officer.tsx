@@ -106,10 +106,13 @@ function OfficerView() {
           </div>
           <p className="truncate text-sm text-muted-foreground">{junction.name}</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-clear-ink">
-          <span className={cn("size-2.5 rounded-full", officer.online ? "bg-clear" : "bg-muted-foreground")} />
-          {officer.online ? "Online" : "Offline"}
-        </span>
+        <div className="flex items-center gap-2">
+          <ConnectionChip state={connectionState} />
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-clear-ink">
+            <span className={cn("size-2.5 rounded-full", officer.online ? "bg-clear" : "bg-muted-foreground")} />
+            {officer.online ? "Online" : "Offline"}
+          </span>
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">

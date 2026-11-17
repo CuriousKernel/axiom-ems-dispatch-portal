@@ -12,7 +12,7 @@ import { formatDuration, formatSimTime } from "@/lib/axiom/format";
 import { JUNCTIONS, OFFICERS, junctionById, officerById, officersAt, readingFor } from "@/lib/axiom/seed";
 import { useAxiom } from "@/lib/axiom/store";
 import { useSimulator } from "@/lib/simulator-engine";
-import { PRIMARY_ROUTE } from "@/lib/route-data";
+import { PRIMARY_ROUTE, ALT_ROUTE, routeIsSynthetic } from "@/lib/route-data";
 import type { JunctionStatus, LatLng } from "@/lib/axiom/types";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +37,7 @@ function LivePage() {
 
   const ambulance = useSimulator((s) => s.ambulance);
   const readings = useSimulator((s) => s.readings);
+  const activeRouteId = useSimulator((s) => s.activeRouteId);
   const startEngine = useSimulator((s) => s.startEngine);
   const stopEngine = useSimulator((s) => s.stopEngine);
 
@@ -58,13 +59,14 @@ function LivePage() {
     });
   }, [readings]);
 
-  // Split PRIMARY_ROUTE into traveled (green) and ahead (gray)
+  // Split active route into traveled (green) and ahead (gray)
   const { traveled, ahead } = useMemo(() => {
+    const activeRoute = activeRouteId === "alt" ? ALT_ROUTE : PRIMARY_ROUTE;
     const currentDist = ambulance.distanceMeters;
     const trav: LatLng[] = [];
     const ah: LatLng[] = [];
 
-    for (const pt of PRIMARY_ROUTE.points) {
+    for (const pt of activeRoute.points) {
       if (pt.cumulativeDistanceMeters <= currentDist) {
         trav.push({ lat: pt.lat, lng: pt.lng });
       } else {
@@ -79,10 +81,17 @@ function LivePage() {
     }
 
     return { traveled: trav, ahead: ah };
-  }, [ambulance.distanceMeters, ambulance.lat, ambulance.lng]);
+  }, [activeRouteId, ambulance.distanceMeters, ambulance.lat, ambulance.lng]);
 
   return (
     <>
+      {/* Synthetic route warning banner */}
+      {routeIsSynthetic && (
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-yellow-400/50 bg-yellow-500/10 px-4 py-2 text-sm text-yellow-700 dark:text-yellow-300">
+          <span className="font-semibold">⚠ Straight-line placeholder route.</span>
+          <span>Run <code className="rounded bg-yellow-900/20 px-1 font-mono text-xs">npm run fetch-route</code> to load the real OSRM road geometry.</span>
+        </div>
+      )}
       <div className="grid grid-cols-[65fr_35fr] gap-4">
         <Card className="relative min-h-[600px] overflow-hidden rounded-lg p-0 shadow-none">
           <MapFrame

@@ -12,7 +12,7 @@ export type AlertState =
 
 export type Priority = "P1" | "P2";
 export type QueueSourceKind = "simulator" | "vision";
-export type ConnectionState = "mock" | "live" | "reconnecting";
+export type ConnectionState = "mock" | "live" | "reconnecting" | "connecting" | "local";
 
 export interface LatLng {
   lat: number;

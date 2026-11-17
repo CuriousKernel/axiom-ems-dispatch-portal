@@ -72,6 +72,8 @@ export interface AlertRecord {
   transitions: AlertTransition[];
   /** True when the alert fires too late for the officer to arrive. */
   isLateAlert: boolean;
+  /** Optional reason for escalation or inability to clear. */
+  reason?: string | undefined;
 }
 
 // ─── State machine ────────────────────────────────────────────────────────

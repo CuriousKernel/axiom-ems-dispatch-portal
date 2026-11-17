@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
-import { ArrowLeft, Gauge, Navigation, Play, Square, Volume2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowLeft, Gauge, Navigation, Play, Square, Volume2, VolumeX } from "lucide-react";
 import { AppFooter } from "@/components/axiom/AppFooter";
 import { ConnectionChip } from "@/components/axiom/ConnectionChip";
 import { MapFrame } from "@/components/axiom/MapFrame";
@@ -11,7 +11,8 @@ import { driverChipFor } from "@/lib/axiom/driver";
 import { formatDuration } from "@/lib/axiom/format";
 import { AMBULANCE, HOSPITAL_ID, JUNCTIONS, ORIGIN, junctionById } from "@/lib/axiom/seed";
 import { useSimClient } from "@/lib/use-sim-client";
-import { PRIMARY_ROUTE } from "@/lib/route-data";
+import { PRIMARY_ROUTE, ALT_ROUTE } from "@/lib/route-data";
+import { speakRerouteAnnouncement } from "@/lib/reroute";
 import type { JunctionStatus, LatLng, Priority } from "@/lib/axiom/types";
 import { cn } from "@/lib/utils";
 
@@ -142,6 +143,19 @@ function ActiveTrip({
   state: ReturnType<typeof useSimClient>["state"];
   sendCommand: ReturnType<typeof useSimClient>["sendCommand"];
 }) {
+  const [muted, setMuted] = useState(false);
+  const prevRerouted = useRef(false);
+
+  useEffect(() => {
+    if (state.rerouted && !prevRerouted.current) {
+      prevRerouted.current = true;
+      speakRerouteAnnouncement(
+        state.rerouteMessage ?? "Route changed. Diverting via Ring Road to avoid ITO.",
+        muted,
+      );
+    }
+  }, [state.rerouted, state.rerouteMessage, muted]);
+
   const hospitalReading = state.readings[HOSPITAL_ID];
   const hospitalEta = hospitalReading ? hospitalReading.eta : 0;
 
@@ -158,13 +172,15 @@ function ActiveTrip({
   const nextChip = driverChipFor(nextAlert ? { ...nextAlert, escalatesIn: null } : undefined);
   const nextEta = state.readings[nextJunction.id]?.eta ?? 0;
 
+  const activeRoute = state.activeRouteId === "alt" ? ALT_ROUTE : PRIMARY_ROUTE;
+
   // Polylines
   const { traveled, ahead } = useMemo(() => {
     const currentDist = state.ambulance.distanceMeters;
     const trav: LatLng[] = [];
     const ah: LatLng[] = [];
 
-    for (const pt of PRIMARY_ROUTE.points) {
+    for (const pt of activeRoute.points) {
       if (pt.cumulativeDistanceMeters <= currentDist) {
         trav.push({ lat: pt.lat, lng: pt.lng });
       } else {
@@ -178,7 +194,7 @@ function ActiveTrip({
     }
 
     return { traveled: trav, ahead: ah };
-  }, [state.ambulance.distanceMeters, state.ambulance.lat, state.ambulance.lng]);
+  }, [activeRoute, state.ambulance.distanceMeters, state.ambulance.lat, state.ambulance.lng]);
 
   const liveJunctions = useMemo(() => {
     return JUNCTIONS.map((j) => ({
@@ -189,6 +205,17 @@ function ActiveTrip({
 
   return (
     <>
+      {/* High-visibility reroute banner */}
+      {state.rerouted && (
+        <section className="flex items-center gap-3 rounded-lg border-2 border-amber-500 bg-amber-500/15 p-4 text-amber-950 dark:text-amber-200">
+          <AlertTriangle className="size-6 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+          <div className="flex-1">
+            <p className="text-base font-bold tracking-tight">REROUTE IN EFFECT</p>
+            <p className="text-sm font-semibold">{state.rerouteMessage ?? "+1 min 10 s — Route changed to avoid ITO"}</p>
+          </div>
+        </section>
+      )}
+
       <section className="rounded-lg border bg-card p-5 text-center">
         <p className="text-sm text-muted-foreground">ETA to hospital</p>
         <p className="tnum mt-1 text-hero font-semibold tracking-tight">
@@ -217,7 +244,18 @@ function ActiveTrip({
       <section className="flex items-center gap-3 rounded-lg border bg-primary-soft p-4 text-primary">
         <Navigation className="size-6 shrink-0" aria-hidden />
         <p className="flex-1 text-title font-semibold">Priority Corridor Active</p>
-        <Volume2 className="size-5 shrink-0 opacity-60" aria-label="Voice guidance (later phase)" />
+        <button
+          type="button"
+          onClick={() => setMuted((m) => !m)}
+          className="rounded p-1 hover:bg-primary/10 transition-colors"
+          aria-label={muted ? "Unmute voice alerts" : "Mute voice alerts"}
+        >
+          {muted ? (
+            <VolumeX className="size-5 shrink-0 opacity-60" />
+          ) : (
+            <Volume2 className="size-5 shrink-0" />
+          )}
+        </button>
       </section>
 
       <section className="overflow-hidden rounded-lg border bg-card">

@@ -1,62 +1,83 @@
 /**
  * src/lib/use-sim-client.ts
  *
- * Client subscription hook and store for subscriber views (Officer, Driver).
- * Receives simulation updates from the Control Room host via BroadcastChannelTransport.
- * Tracks heartbeat: if no state is received for 3 seconds, connectionState becomes "reconnecting".
+ * Client subscription hook for subscriber views (Officer, Driver).
+ * Receives simulation updates from the Control Room host via the best available transport:
+ *   - Supabase Broadcast when VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY are set (cross-device)
+ *   - BroadcastChannel for same-device multi-tab (local mode)
+ *
+ * Connection state:
+ *   "live"         — messages are flowing
+ *   "reconnecting" — no message in 3 s (or Supabase channel error)
+ *   "local"        — using BroadcastChannel fallback (no Supabase keys)
  */
 
-import { useEffect, useState, useMemo } from "react";
-import {
-  BroadcastChannelTransport,
-  type SimulationState,
-  type SimCommand,
-} from "./sim-transport";
+import { useEffect, useRef, useState, useMemo } from "react";
+import type { SimulationState, SimCommand } from "./sim-transport";
+import { createBestTransport, type SupabaseConnectionState } from "./sim-transport-supabase";
 import { useSimulator } from "./simulator-engine";
-import type { ConnectionState } from "./axiom/types";
 
-// Shared client transport
-const clientTransport = new BroadcastChannelTransport();
+export type ClientConnectionState = SupabaseConnectionState;
+
+// Module-level cached transport so all hook instances share one connection.
+// Lazy-initialised on first hook call.
+let _sharedTransport: ReturnType<typeof createBestTransport> | null = null;
+let _sharedConnState: SupabaseConnectionState = "connecting";
+const _connStateListeners = new Set<(s: SupabaseConnectionState) => void>();
+
+function getSharedTransport() {
+  if (!_sharedTransport) {
+    _sharedTransport = createBestTransport((state) => {
+      _sharedConnState = state;
+      _connStateListeners.forEach((fn) => fn(state));
+    });
+  }
+  return _sharedTransport;
+}
 
 export function useSimClient() {
-  // If the control room host is running in the same tab / context, we can read directly or via transport
-  const hostState = useSimulator.getState().getSnapshot();
+  const hostSnapshot = useSimulator.getState().getSnapshot();
 
-  const [state, setState] = useState<SimulationState>(() => hostState);
-  const [connectionState, setConnectionState] = useState<ConnectionState>("live");
+  const [state, setState] = useState<SimulationState>(() => hostSnapshot);
+  const [connectionState, setConnectionState] = useState<ClientConnectionState>(() => _sharedConnState);
+  const lastMsgTimeRef = useRef(Date.now());
 
   useEffect(() => {
-    let lastMsgTime = Date.now();
+    const transport = getSharedTransport();
 
-    // Check heartbeat every 1 second
-    const interval = setInterval(() => {
-      // If host is active in this tab, always live
+    // Listen to transport-level connection state changes
+    const connListener = (s: SupabaseConnectionState) => setConnectionState(s);
+    _connStateListeners.add(connListener);
+
+    // Heartbeat: if no state received in 3s and host isn't local, go reconnecting
+    const heartbeatInterval = setInterval(() => {
       const hostRunning = useSimulator.getState()._tickHandle !== null;
       if (hostRunning) {
+        // Host is in this tab — always live
         setConnectionState("live");
         return;
       }
-
-      if (Date.now() - lastMsgTime > 3000) {
+      if (Date.now() - lastMsgTimeRef.current > 3000 && connectionState !== "local") {
         setConnectionState("reconnecting");
       }
     }, 1000);
 
-    const unsubscribe = clientTransport.subscribe((nextState) => {
-      lastMsgTime = Date.now();
+    const unsubscribe = transport.subscribe((nextState) => {
+      lastMsgTimeRef.current = Date.now();
       setState(nextState);
       setConnectionState("live");
     });
 
     return () => {
-      clearInterval(interval);
+      clearInterval(heartbeatInterval);
       unsubscribe();
+      _connStateListeners.delete(connListener);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendCommand = useMemo(() => {
     return (cmd: SimCommand) => {
-      clientTransport.sendCommand(cmd);
+      getSharedTransport().sendCommand(cmd);
     };
   }, []);
 

@@ -46,6 +46,9 @@ export interface SimulationState {
   readings: Record<string, JunctionSimReading>;
   alerts: AlertRecord[];
   events: SimEvent[];
+  activeRouteId: "primary" | "alt";
+  rerouted: boolean;
+  rerouteMessage?: string | undefined;
   hostTimestamp: number;
 }
 

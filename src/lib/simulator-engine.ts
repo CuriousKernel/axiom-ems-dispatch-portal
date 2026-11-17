@@ -38,11 +38,17 @@ import { SimulatedSource, type ScenarioName } from "@/lib/sources/simulated";
 import type { JunctionStatus, Priority } from "@/lib/axiom/types";
 import {
   PRIMARY_ROUTE,
+  ALT_ROUTE,
 } from "@/lib/route-data";
 import {
   positionAt,
   distanceToJunction,
 } from "@/lib/route";
+import {
+  isUnclearable,
+  shouldReroute,
+  projectOntoAlt,
+} from "@/lib/reroute";
 import {
   createAmbulanceState,
   stepAmbulance,
@@ -50,13 +56,13 @@ import {
   type AmbulanceState,
 } from "@/lib/ambulance";
 import {
-  BroadcastChannelTransport,
   type SimTransport,
   type SimulationState,
   type SimCommand,
   type JunctionSimReading,
   type SimEvent,
 } from "@/lib/sim-transport";
+import { createHostTransport } from "@/lib/sim-transport-supabase";
 
 // ─── Verification state for "Road cleared" tap ────────────────────────────
 
@@ -86,6 +92,9 @@ interface SimEngineState {
   speed: 1 | 2 | 4;
   paused: boolean;
   driverPriority: Priority;
+  activeRouteId: "primary" | "alt";
+  rerouted: boolean;
+  rerouteMessage?: string | undefined;
   ambulance: AmbulanceState & { lat: number; lng: number; heading: number };
   source: SimulatedSource;
   readings: Record<string, JunctionSimReading>;
@@ -124,7 +133,7 @@ const JUNCTION_DISTANCES = JUNCTIONS.map((j) => {
 
 export const useSimulator = create<SimEngineState>((set, get) => {
   const source = new SimulatedSource();
-  const transport = new BroadcastChannelTransport();
+  const transport = createHostTransport();
 
   const initialAmbState = createAmbulanceState();
   const initialPos = positionAt(PRIMARY_ROUTE, 0);
@@ -182,6 +191,9 @@ export const useSimulator = create<SimEngineState>((set, get) => {
       speed: s.speed,
       paused: s.paused,
       driverPriority: s.driverPriority,
+      activeRouteId: s.activeRouteId,
+      rerouted: s.rerouted,
+      rerouteMessage: s.rerouteMessage,
       ambulance: {
         distanceMeters: s.ambulance.distanceMeters,
         speedKmh: s.ambulance.speedKmh,
@@ -203,6 +215,9 @@ export const useSimulator = create<SimEngineState>((set, get) => {
     speed: 1,
     paused: false,
     driverPriority: "P1",
+    activeRouteId: "primary",
+    rerouted: false,
+    rerouteMessage: undefined,
     ambulance: {
       ...initialAmbState,
       lat: initialPos.lat,
@@ -271,6 +286,9 @@ export const useSimulator = create<SimEngineState>((set, get) => {
       set({
         simTimeSeconds: 0,
         paused: false,
+        activeRouteId: "primary",
+        rerouted: false,
+        rerouteMessage: undefined,
         ambulance: {
           ...createAmbulanceState(0),
           lat: pos.lat,
@@ -467,18 +485,21 @@ export const useSimulator = create<SimEngineState>((set, get) => {
       const simDelta = isStepping ? dt * state.speed : 0;
       const nextSimTime = state.simTimeSeconds + simDelta;
 
+      const activeRoute = state.activeRouteId === "alt" ? ALT_ROUTE : PRIMARY_ROUTE;
+      const junctionDistances = JUNCTIONS.map((j) => activeRoute.junctions[j.id]?.distanceMeters ?? 0);
+
       // 1. Advance ambulance along route
       const nextAmbState = isStepping
         ? stepAmbulance(
             state.ambulance,
             simDelta,
-            PRIMARY_ROUTE.totalLengthMeters,
-            JUNCTION_DISTANCES,
+            activeRoute.totalLengthMeters,
+            junctionDistances,
           )
         : state.ambulance;
 
-      const pos = positionAt(PRIMARY_ROUTE, nextAmbState.distanceMeters);
-      const nextAmb = {
+      const pos = positionAt(activeRoute, nextAmbState.distanceMeters);
+      let nextAmb = {
         ...nextAmbState,
         lat: pos.lat,
         lng: pos.lng,
@@ -514,8 +535,8 @@ export const useSimulator = create<SimEngineState>((set, get) => {
 
       for (const j of JUNCTIONS) {
         const queueReading = state.source.getReading(j.id);
-        const jDistMeters = PRIMARY_ROUTE.junctions[j.id]?.distanceMeters ?? 0;
-        const distRemaining = distanceToJunction(PRIMARY_ROUTE, nextAmb.distanceMeters, j.id) ?? 0;
+        const jDistMeters = activeRoute.junctions[j.id]?.distanceMeters ?? 0;
+        const distRemaining = distanceToJunction(activeRoute, nextAmb.distanceMeters, j.id) ?? 0;
 
         // Check if junction has been passed
         const isPassed = distRemaining <= -30;
@@ -703,14 +724,57 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         return a;
       });
 
+      // 6. Reroute check (if on primary route and an unclearable jam is ahead)
+      let nextActiveRouteId = state.activeRouteId;
+      let nextRerouted = state.rerouted;
+      let nextRerouteMessage = state.rerouteMessage;
+      const rerouteEvents: SimEvent[] = [];
+
+      if (!nextRerouted && isStepping) {
+        for (const j of JUNCTIONS) {
+          const reading = nextReadings[j.id];
+          const isUnclear = isUnclearable(j.id, currentAlerts, reading?.status);
+          if (isUnclear && reading) {
+            const shouldSwitch = shouldReroute(
+              PRIMARY_ROUTE,
+              ALT_ROUTE,
+              nextAmb.distanceMeters,
+              j.id,
+              reading.clearTime,
+            );
+            if (shouldSwitch) {
+              const proj = projectOntoAlt(nextAmb.lat, nextAmb.lng, ALT_ROUTE);
+              nextAmb = {
+                ...nextAmb,
+                distanceMeters: proj.distanceMeters,
+                heading: proj.heading,
+              };
+              nextActiveRouteId = "alt";
+              nextRerouted = true;
+              nextRerouteMessage = `+1 min 10 s — Route changed via Ring Road to avoid ${j.name}`;
+              rerouteEvents.push({
+                id: nextEventId(),
+                at: nextSimTime,
+                type: "trip",
+                message: `Rerouted via Ring Road (+1:10) — ${j.name} unclearable`,
+              });
+              break;
+            }
+          }
+        }
+      }
+
       set({
         simTimeSeconds: nextSimTime,
+        activeRouteId: nextActiveRouteId,
+        rerouted: nextRerouted,
+        rerouteMessage: nextRerouteMessage,
         ambulance: nextAmb,
         readings: nextReadings,
         confirmedStatuses: nextConfirmedStatuses,
         hysteresis: nextHysteresis,
         alerts: currentAlerts.slice(0, 50),
-        events: [...timeoutEvents, ...verificationEvents, ...newStatusEvents, ...state.events].slice(0, 100),
+        events: [...rerouteEvents, ...timeoutEvents, ...verificationEvents, ...newStatusEvents, ...state.events].slice(0, 100),
         sentAtSimTime: nextSentAt,
         verifications: nextVerifications,
       });
