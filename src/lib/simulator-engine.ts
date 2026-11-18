@@ -55,10 +55,12 @@ import {
   computeEtaSeconds,
   type AmbulanceState,
 } from "@/lib/ambulance";
+import { toast } from "sonner";
 import {
   type SimTransport,
   type SimulationState,
   type SimCommand,
+  type SimSpeed,
   type JunctionSimReading,
   type SimEvent,
 } from "@/lib/sim-transport";
@@ -85,13 +87,28 @@ function nextAlertId() {
   return `al-${++alertSeq}`;
 }
 
+let lastTickAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+let lastBroadcastAt = 0;
+
+export function formatOfficerName(officerId: string): string {
+  if (officerId === "control-room") return "Duty Inspector (Control Room)";
+  const o = OFFICERS.find((x) => x.id === officerId);
+  return o ? `${o.rank} ${o.name}` : officerId;
+}
+
+export function formatJunctionName(junctionId: string): string {
+  const j = JUNCTIONS.find((x) => x.id === junctionId);
+  return j ? j.name : junctionId;
+}
+
 // ─── Store Interface ──────────────────────────────────────────────────────
 
 interface SimEngineState {
   simTimeSeconds: number;
-  speed: 1 | 2 | 4;
+  speed: SimSpeed;
   paused: boolean;
   driverPriority: Priority;
+  alertTimeoutSeconds: 30 | 15;
   activeRouteId: "primary" | "alt";
   rerouted: boolean;
   rerouteMessage?: string | undefined;
@@ -103,6 +120,7 @@ interface SimEngineState {
   alerts: AlertRecord[];
   events: SimEvent[];
   sentAtSimTime: Record<string, number>;
+  alertElapsedWallSeconds: Record<string, number>;
   verifications: Record<string, RoadClearVerification>;
   transport: SimTransport;
   _tickHandle: ReturnType<typeof setInterval> | null;
@@ -110,10 +128,13 @@ interface SimEngineState {
 
   // Actions
   startTrip: () => void;
+  pauseTrip: () => void;
+  resumeTrip: () => void;
   endTrip: () => void;
   togglePaused: () => void;
   restartTrip: () => void;
-  setSpeed: (s: 1 | 2 | 4) => void;
+  setSpeed: (s: SimSpeed) => void;
+  setAlertTimeout: (timeout: 30 | 15) => void;
   setDriverPriority: (p: Priority) => void;
   setDensity: (junctionId: string, density: number) => void;
   applyScenario: (name: ScenarioName) => void;
@@ -149,16 +170,19 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         s.endTrip();
         break;
       case "PAUSE_TRIP":
-        if (!s.paused) s.togglePaused();
+        s.pauseTrip();
         break;
       case "RESUME_TRIP":
-        if (s.paused) s.togglePaused();
+        s.resumeTrip();
         break;
       case "RESTART_TRIP":
         s.restartTrip();
         break;
       case "SET_SPEED":
         s.setSpeed(cmd.speed);
+        break;
+      case "SET_ALERT_TIMEOUT":
+        s.setAlertTimeout(cmd.timeout);
         break;
       case "SET_PRIORITY":
         s.setDriverPriority(cmd.priority);
@@ -191,6 +215,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
       speed: s.speed,
       paused: s.paused,
       driverPriority: s.driverPriority,
+      alertTimeoutSeconds: s.alertTimeoutSeconds,
       activeRouteId: s.activeRouteId,
       rerouted: s.rerouted,
       rerouteMessage: s.rerouteMessage,
@@ -215,6 +240,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
     speed: 1,
     paused: false,
     driverPriority: "P1",
+    alertTimeoutSeconds: 30,
     activeRouteId: "primary",
     rerouted: false,
     rerouteMessage: undefined,
@@ -238,6 +264,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
       },
     ],
     sentAtSimTime: {},
+    alertElapsedWallSeconds: {},
     verifications: {},
     transport,
     _tickHandle: null,
@@ -248,6 +275,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
     startTrip() {
       set((s) => ({
         ambulance: { ...s.ambulance, status: "running" },
+        paused: false,
         events: [
           {
             id: nextEventId(),
@@ -261,8 +289,25 @@ export const useSimulator = create<SimEngineState>((set, get) => {
       get().tick(0.01);
     },
 
+    pauseTrip() {
+      set({ paused: true });
+      get().tick(0);
+    },
+
+    resumeTrip() {
+      set((s) => ({
+        paused: false,
+        ambulance:
+          s.ambulance.status === "idle"
+            ? { ...s.ambulance, status: "running" }
+            : s.ambulance,
+      }));
+      get().tick(0.01);
+    },
+
     endTrip() {
       set((s) => ({
+        paused: false,
         ambulance: { ...s.ambulance, status: "arrived", speedKmh: 0, smoothedSpeedKmh: 0 },
         events: [
           {
@@ -278,11 +323,19 @@ export const useSimulator = create<SimEngineState>((set, get) => {
     },
 
     togglePaused() {
-      set((s) => ({ paused: !s.paused }));
+      const s = get();
+      if (s.ambulance.status === "idle") {
+        s.startTrip();
+      } else if (s.paused) {
+        s.resumeTrip();
+      } else {
+        s.pauseTrip();
+      }
     },
 
     restartTrip() {
       const pos = positionAt(PRIMARY_ROUTE, 0);
+      const baseAmb = createAmbulanceState(0);
       set({
         simTimeSeconds: 0,
         paused: false,
@@ -290,13 +343,15 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         rerouted: false,
         rerouteMessage: undefined,
         ambulance: {
-          ...createAmbulanceState(0),
+          ...baseAmb,
+          status: "running", // AUTO-START!
           lat: pos.lat,
           lng: pos.lng,
           heading: pos.heading,
         },
         alerts: [],
         sentAtSimTime: {},
+        alertElapsedWallSeconds: {},
         verifications: {},
         confirmedStatuses: {},
         hysteresis: {},
@@ -305,15 +360,28 @@ export const useSimulator = create<SimEngineState>((set, get) => {
             id: nextEventId(),
             at: 0,
             type: "system",
-            message: "Simulation restarted.",
+            message: "Simulation restarted from Connaught Place",
           },
         ],
       });
+      try {
+        toast("Trip restarted from Connaught Place");
+      } catch {
+        // ignore
+      }
       get().tick(0.01);
     },
 
-    setSpeed(speed) {
-      set({ speed });
+    setSpeed(speed: SimSpeed) {
+      if ([1, 2, 4, 8, 16].includes(speed)) {
+        set({ speed });
+        transport.publish(buildSnapshot());
+      }
+    },
+
+    setAlertTimeout(timeout: 30 | 15) {
+      set({ alertTimeoutSeconds: timeout });
+      transport.publish(buildSnapshot());
     },
 
     setDriverPriority(driverPriority) {
@@ -355,11 +423,18 @@ export const useSimulator = create<SimEngineState>((set, get) => {
     acknowledgeAlert(alertId, officerId) {
       set((s) => {
         let ackJunctionName = "";
+        const officerName = formatOfficerName(officerId);
+        const wallSec = Math.round(s.alertElapsedWallSeconds[alertId] ?? 0);
+
         const updated = s.alerts.map((a) => {
           if (a.id !== alertId || a.state !== AlertState.SENT) return a;
           const j = JUNCTIONS.find((x) => x.id === a.junctionId);
           ackJunctionName = j?.name ?? a.junctionId;
-          return transitionAlert(a, AlertState.ACKNOWLEDGED, `Acknowledged by ${officerId}`, Date.now());
+          const transitioned = transitionAlert(a, AlertState.ACKNOWLEDGED, `Acknowledged by ${officerId}`, Date.now());
+          return {
+            ...transitioned,
+            escalatesIn: undefined, // countdown stops!
+          };
         });
 
         const newEvents: SimEvent[] = ackJunctionName
@@ -368,7 +443,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
                 id: nextEventId(),
                 at: s.simTimeSeconds,
                 type: "officer",
-                message: `Alert for ${ackJunctionName} acknowledged by officer ${officerId}`,
+                message: `Alert for ${ackJunctionName} acknowledged by ${officerName} in ${wallSec} s`,
               },
             ]
           : [];
@@ -378,11 +453,13 @@ export const useSimulator = create<SimEngineState>((set, get) => {
           events: [...newEvents, ...s.events],
         };
       });
+      transport.publish(buildSnapshot());
     },
 
     officerInPosition(alertId, officerId) {
       set((s) => {
         let posJunctionName = "";
+        const officerName = formatOfficerName(officerId);
         const updated = s.alerts.map((a) => {
           if (a.id !== alertId || a.state !== AlertState.ACKNOWLEDGED) return a;
           const j = JUNCTIONS.find((x) => x.id === a.junctionId);
@@ -396,7 +473,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
                 id: nextEventId(),
                 at: s.simTimeSeconds,
                 type: "officer",
-                message: `Officer ${officerId} in position at ${posJunctionName}. Flow priority clearing active (3x drain).`,
+                message: `Officer ${officerName} in position at ${posJunctionName}. Flow priority clearing active (3x drain).`,
               },
             ]
           : [];
@@ -406,6 +483,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
           events: [...newEvents, ...s.events],
         };
       });
+      transport.publish(buildSnapshot());
     },
 
     officerRoadCleared(alertId, officerId) {
@@ -431,7 +509,8 @@ export const useSimulator = create<SimEngineState>((set, get) => {
           },
         };
 
-        const j = JUNCTIONS.find((x) => x.id === targetAlert.junctionId);
+        const jName = formatJunctionName(targetAlert.junctionId);
+        const officerName = formatOfficerName(officerId);
 
         return {
           alerts: updatedAlerts,
@@ -441,12 +520,13 @@ export const useSimulator = create<SimEngineState>((set, get) => {
               id: nextEventId(),
               at: s.simTimeSeconds,
               type: "officer",
-              message: `Officer ${officerId} tapped 'Road cleared' for ${j?.name ?? targetAlert.junctionId}. Running 2-tick clearance check.`,
+              message: `Officer ${officerName} tapped 'Road cleared' for ${jName}. Running 2-tick clearance check.`,
             },
             ...s.events,
           ],
         };
       });
+      transport.publish(buildSnapshot());
     },
 
     officerCantClear(alertId, officerId, reason) {
@@ -458,23 +538,36 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         const nextOfficer = findNearestOfficer(OFFICERS, j ? { lat: j.lat, lng: j.lng } : { lat: 0, lng: 0 }, [officerId]);
         const nextId = nextOfficer.kind === "assigned" ? nextOfficer.officer.id : "control-room";
 
-        const escalated = escalateNotCleared(targetAlert, nextId, Date.now());
+        let escalated = escalateNotCleared(targetAlert, nextId, Date.now());
+        escalated = {
+          ...escalated,
+          escalatesIn: s.alertTimeoutSeconds,
+          escalatedFrom: officerId,
+          previousOfficerId: officerId,
+          reason: reason ?? "Officer cannot clear",
+        };
+
         const updated = s.alerts.map((a) => (a.id === alertId ? escalated : a));
+        const officerName = formatOfficerName(officerId);
+        const nextOfficerName = formatOfficerName(nextId);
+        const jName = formatJunctionName(targetAlert.junctionId);
 
         return {
           alerts: updated,
           sentAtSimTime: { ...s.sentAtSimTime, [alertId]: s.simTimeSeconds },
+          alertElapsedWallSeconds: { ...s.alertElapsedWallSeconds, [alertId]: 0 },
           events: [
             {
               id: nextEventId(),
               at: s.simTimeSeconds,
               type: "alert",
-              message: `Officer ${officerId} cannot clear ${j?.name ?? "junction"}${reason ? ` (${reason})` : ""}. Re-escalated to ${nextId}`,
+              message: `Officer ${officerName} cannot clear ${jName}${reason ? ` (${reason})` : ""}. Re-escalated to ${nextOfficerName}`,
             },
             ...s.events,
           ],
         };
       });
+      transport.publish(buildSnapshot());
     },
 
     tick(forcedDt?: number) {
@@ -532,6 +625,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
       const newAlerts: AlertRecord[] = [];
       const newStatusEvents: SimEvent[] = [];
       const nextSentAt = { ...state.sentAtSimTime };
+      const nextAlertWallElapsed = { ...state.alertElapsedWallSeconds };
 
       for (const j of JUNCTIONS) {
         const queueReading = state.source.getReading(j.id);
@@ -594,16 +688,25 @@ export const useSimulator = create<SimEngineState>((set, get) => {
             });
 
             const sentAlert = transitionAlert(alert, AlertState.SENT, "auto-sent on critical", Date.now());
+            sentAlert.escalatesIn = state.alertTimeoutSeconds;
             newAlerts.push(sentAlert);
             nextSentAt[sentAlert.id] = nextSimTime;
+            nextAlertWallElapsed[sentAlert.id] = 0;
 
+            const officerName = formatOfficerName(officerId);
             const lateTag = critResult.isLateAlert ? " [LATE — routed to control room]" : "";
             newStatusEvents.push({
               id: nextEventId(),
               at: nextSimTime,
               type: "alert",
-              message: `${j.name} → CRITICAL. Alert sent to ${officerId}${lateTag}. Clear: ${Math.round(clearTime)}s, ETA: ${eta}s`,
+              message: `Alert sent to ${officerName} for ${j.name}${lateTag}. Clear: ${Math.round(clearTime)}s, ETA: ${eta}s`,
             });
+
+            try {
+              toast(`Alert → ${officerName}`);
+            } catch {
+              // ignore
+            }
           }
 
           // Recovery / status change log
@@ -691,31 +794,51 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         }
       }
 
-      // 5. NO_ACK Timeout (driven by simulation clock)
+      // 5. NO_ACK Timeout (driven by real elapsed wall-clock seconds)
       const timeoutEvents: SimEvent[] = [];
       currentAlerts = currentAlerts.map((a) => {
         if (a.state !== AlertState.SENT) return a;
-        const sentSim = nextSentAt[a.id] ?? 0;
-        const elapsedSimSeconds = nextSimTime - sentSim;
 
-        if (elapsedSimSeconds >= ALERT_CONFIG.NO_ACK_TIMEOUT_S) {
+        const currentWall = (nextAlertWallElapsed[a.id] ?? 0) + dt;
+        nextAlertWallElapsed[a.id] = currentWall;
+        const escalatesIn = Math.max(0, Math.ceil(state.alertTimeoutSeconds - currentWall));
+        a = { ...a, escalatesIn };
+
+        if (currentWall >= state.alertTimeoutSeconds) {
           const j = JUNCTIONS.find((x) => x.id === a.junctionId);
           const nextOfficer = findNearestOfficer(
             OFFICERS,
             j ? { lat: j.lat, lng: j.lng } : { lat: 0, lng: 0 },
-            [a.officerId],
+            [a.officerId, ...(a.previousOfficerId ? [a.previousOfficerId] : [])],
           );
           const nextId = nextOfficer.kind === "assigned" ? nextOfficer.officer.id : "control-room";
 
           try {
-            const escalated = escalateNoAck(a, nextId, Date.now());
+            let escalated = escalateNoAck(a, nextId, Date.now());
+            escalated = {
+              ...escalated,
+              escalatesIn: state.alertTimeoutSeconds,
+              escalatedFrom: a.officerId,
+              previousOfficerId: a.officerId,
+            };
+            nextAlertWallElapsed[a.id] = 0;
             nextSentAt[a.id] = nextSimTime;
+
+            const nextName = formatOfficerName(nextId);
+
             timeoutEvents.push({
               id: nextEventId(),
               at: nextSimTime,
               type: "alert",
-              message: `No ACK from ${a.officerId} for ${j?.name ?? "junction"} after ${ALERT_CONFIG.NO_ACK_TIMEOUT_S}s of sim time — escalated to ${nextId}`,
+              message: `No acknowledgement in ${state.alertTimeoutSeconds} s. Escalated to ${nextName}`,
             });
+
+            try {
+              toast(`Alert escalated → ${nextName}`);
+            } catch {
+              // ignore
+            }
+
             return escalated;
           } catch {
             return a;
@@ -776,21 +899,36 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         alerts: currentAlerts.slice(0, 50),
         events: [...rerouteEvents, ...timeoutEvents, ...verificationEvents, ...newStatusEvents, ...state.events].slice(0, 100),
         sentAtSimTime: nextSentAt,
+        alertElapsedWallSeconds: nextAlertWallElapsed,
         verifications: nextVerifications,
       });
+
+      // Broadcast snapshot after every tick that changed state
+      transport.publish(buildSnapshot());
+      lastBroadcastAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     },
 
     startEngine() {
       if (get()._tickHandle !== null) return;
 
-      // 100ms internal simulation loop
+      lastTickAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+      lastBroadcastAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+
+      // Real-time tick loop
       const tickH = setInterval(() => {
-        get().tick(0.1);
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        const dt = Math.min((now - lastTickAt) / 1000, 1.0);
+        lastTickAt = now;
+        get().tick(dt);
       }, 100);
 
-      // 500ms broadcast to subscribers
+      // 500ms broadcast heartbeat
       const bcastH = setInterval(() => {
-        transport.publish(buildSnapshot());
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        if (now - lastBroadcastAt >= 450) {
+          transport.publish(buildSnapshot());
+          lastBroadcastAt = now;
+        }
       }, 500);
 
       set({ _tickHandle: tickH, _broadcastHandle: bcastH });

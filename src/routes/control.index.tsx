@@ -1,6 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { BellOff, Circle, CircleCheck, ScrollText, UserRound, VideoOff } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  BellOff,
+  Circle,
+  CircleCheck,
+  Clock,
+  ScrollText,
+  Smartphone,
+  UserCheck,
+  UserRound,
+  Users,
+  VideoOff,
+} from "lucide-react";
+import { toast } from "sonner";
 import { ClearTimeChart } from "@/components/axiom/ClearTimeChart";
 import { EmptyState } from "@/components/axiom/EmptyState";
 import { MapFrame } from "@/components/axiom/MapFrame";
@@ -11,7 +23,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDuration, formatSimTime } from "@/lib/axiom/format";
 import { JUNCTIONS, OFFICERS, junctionById, officerById, officersAt, readingFor } from "@/lib/axiom/seed";
 import { useAxiom } from "@/lib/axiom/store";
-import { useSimulator } from "@/lib/simulator-engine";
+import { useSimulator, formatOfficerName } from "@/lib/simulator-engine";
+import { AlertState } from "@/lib/alerts";
 import { PRIMARY_ROUTE, ALT_ROUTE, routeIsSynthetic } from "@/lib/route-data";
 import type { JunctionStatus, LatLng } from "@/lib/axiom/types";
 import { cn } from "@/lib/utils";
@@ -38,14 +51,6 @@ function LivePage() {
   const ambulance = useSimulator((s) => s.ambulance);
   const readings = useSimulator((s) => s.readings);
   const activeRouteId = useSimulator((s) => s.activeRouteId);
-  const startEngine = useSimulator((s) => s.startEngine);
-  const stopEngine = useSimulator((s) => s.stopEngine);
-
-  // Start engine host on mount, clean up on unmount
-  useEffect(() => {
-    startEngine();
-    return () => stopEngine();
-  }, [startEngine, stopEngine]);
 
   // Compute live junctions with dynamic status
   const liveJunctions = useMemo(() => {
@@ -92,6 +97,8 @@ function LivePage() {
           <span>Run <code className="rounded bg-yellow-900/20 px-1 font-mono text-xs">npm run fetch-route</code> to load the real OSRM road geometry.</span>
         </div>
       )}
+
+      {/* Corridor Map and Live Panels */}
       <div className="grid grid-cols-[65fr_35fr] gap-4">
         <Card className="relative min-h-[600px] overflow-hidden rounded-lg p-0 shadow-none">
           <MapFrame
@@ -121,6 +128,12 @@ function LivePage() {
       {/* Simulator controls */}
       <SimulatorPanel />
 
+      {/* Officer Roster & Live Officer Phone Preview Side-by-Side */}
+      <div className="grid grid-cols-[1fr_390px] gap-4">
+        <OfficerRoster />
+        <OfficerPhonePreview />
+      </div>
+
       <EventLog />
     </>
   );
@@ -142,56 +155,262 @@ function MapLegend() {
 }
 
 function AlertQueue() {
-  const select = useAxiom((s) => s.selectJunction);
+  const select = useAxiom((s) => s.selectedJunctionId);
+  const selectJunction = useAxiom((s) => s.selectJunction);
   const [showAll, setShowAll] = useState(false);
 
   const alerts = useSimulator((s) => s.alerts);
   const readings = useSimulator((s) => s.readings);
+  const acknowledgeAlert = useSimulator((s) => s.acknowledgeAlert);
   const visible = showAll ? alerts : alerts.slice(0, 5);
 
   return (
     <Card className="rounded-lg shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
         <CardTitle className="text-base font-semibold">Alert queue</CardTitle>
-        <span className="tnum text-xs text-muted-foreground">{alerts.length} active</span>
+        <span className="tnum text-xs font-semibold text-muted-foreground">{alerts.length} active</span>
       </CardHeader>
       <CardContent className="px-2 pb-2">
         {alerts.length === 0 ? (
           <EmptyState icon={BellOff} title="No active alerts" body="Alerts appear when a junction turns critical." />
         ) : (
-          <ul className="flex flex-col">
+          <ul className="flex flex-col gap-2">
             {visible.map((a) => {
               const j = junctionById(a.junctionId);
               const o = officerById(a.officerId);
               const reading = readings[a.junctionId];
               if (!j) return null;
+
+              // Escalation chain: [First Officer] -> [Second Officer] -> Duty Inspector
+              const chain: { id: string; name: string; isCurrent: boolean }[] = [];
+              if (a.escalatedFrom && a.escalatedFrom !== a.officerId) {
+                chain.push({
+                  id: a.escalatedFrom,
+                  name: formatOfficerName(a.escalatedFrom),
+                  isCurrent: false,
+                });
+              }
+              chain.push({
+                id: a.officerId,
+                name: formatOfficerName(a.officerId),
+                isCurrent: true,
+              });
+              if (a.officerId !== "control-room") {
+                chain.push({
+                  id: "control-room",
+                  name: "Duty Inspector",
+                  isCurrent: false,
+                });
+              }
+
               return (
-                <li key={a.id}>
-                  <button
-                    onClick={() => select(a.junctionId)}
-                    className="flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-accent"
-                  >
-                    <StatusChip status={reading?.status ?? "CRITICAL"} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{j.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {o ? `${o.rank} ${o.name}` : a.officerId} · {a.state.replace(/_/g, " ").toLowerCase()}
+                <li
+                  key={a.id}
+                  className={cn(
+                    "rounded-lg border p-3 transition-colors",
+                    select === a.junctionId ? "bg-muted/60 border-primary/40" : "bg-card hover:bg-muted/30",
+                  )}
+                  onClick={() => selectJunction(a.junctionId)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <StatusChip status={reading?.status ?? "CRITICAL"} size="sm" />
+                        <span className="font-bold text-sm">{j.name}</span>
                         {a.isLateAlert && (
-                          <span className="ml-1 font-medium text-critical-ink">· LATE</span>
+                          <span className="rounded bg-critical-soft px-1.5 py-0.2 text-[10px] font-bold text-critical-ink">
+                            LATE ALERT
+                          </span>
                         )}
+                      </div>
+                      <p className="mt-1 text-xs font-semibold text-foreground">
+                        → {o ? `${o.rank} ${o.name}` : formatOfficerName(a.officerId)} ({j.name})
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-bold uppercase text-foreground">
+                        {a.state.replace(/_/g, " ")}
                       </span>
-                    </span>
-                  </button>
+                      {a.state === AlertState.SENT && a.escalatesIn !== undefined && (
+                        <span className="tnum flex items-center gap-1 text-[11px] font-bold text-critical">
+                          <Clock className="size-3 animate-spin" />
+                          ⏱ {a.escalatesIn}s left to ACK
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Escalation chain display */}
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground border-t pt-2">
+                    <span className="font-medium">Escalation chain:</span>
+                    {chain.map((c, i) => (
+                      <span key={c.id} className="inline-flex items-center gap-1">
+                        {i > 0 && <span>→</span>}
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 font-medium",
+                            c.isCurrent
+                              ? "bg-primary-soft text-primary font-bold border border-primary/30"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {c.name}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Judge-Demo Controls */}
+                  {a.state === AlertState.SENT && (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border/40 pt-2 text-xs">
+                      <span className="font-extrabold text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Judge Demo:
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20 font-semibold"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          acknowledgeAlert(a.id, a.officerId);
+                        }}
+                      >
+                        Simulate: officer acknowledges
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[11px] text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toast("Simulating ignore: let countdown expire to observe auto-escalation");
+                        }}
+                      >
+                        Simulate: officer ignores
+                      </Button>
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
         {alerts.length > 5 && !showAll && (
-          <Button variant="ghost" size="sm" className="w-full" onClick={() => setShowAll(true)}>
+          <Button variant="ghost" size="sm" className="w-full mt-2" onClick={() => setShowAll(true)}>
             View all
           </Button>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OfficerRoster() {
+  const alerts = useSimulator((s) => s.alerts);
+
+  return (
+    <Card className="rounded-lg shadow-none">
+      <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <UserCheck className="size-4 text-muted-foreground" aria-hidden />
+            Officer Roster & Status
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">Live deployment status along corridor</p>
+        </div>
+        <span className="tnum text-xs font-semibold text-muted-foreground">{OFFICERS.length} officers</span>
+      </CardHeader>
+      <CardContent className="px-4 pb-4">
+        <div className="grid grid-cols-2 gap-2.5">
+          {OFFICERS.map((o) => {
+            const j = junctionById(o.junctionId);
+            const activeAlert = alerts.find(
+              (a) => a.officerId === o.id && a.state !== AlertState.VERIFIED_CLEAR,
+            );
+            const timedOutAlert = alerts.find(
+              (a) =>
+                a.previousOfficerId === o.id &&
+                a.officerId !== o.id &&
+                a.state !== AlertState.VERIFIED_CLEAR,
+            );
+
+            // Status badge logic: STANDBY / ALERTED / ACKNOWLEDGED / IN POSITION / NO RESPONSE / ESCALATED
+            let badgeLabel = "STANDBY";
+            let badgeClass = "bg-muted text-muted-foreground";
+
+            if (activeAlert) {
+              if (activeAlert.state === AlertState.SENT) {
+                badgeLabel = "ALERTED";
+                badgeClass = "bg-critical text-white font-bold animate-pulse";
+              } else if (activeAlert.state === AlertState.ACKNOWLEDGED) {
+                badgeLabel = "ACKNOWLEDGED";
+                badgeClass = "bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/40";
+              } else if (
+                activeAlert.state === AlertState.IN_POSITION ||
+                activeAlert.state === AlertState.CLEARING
+              ) {
+                badgeLabel = "IN POSITION";
+                badgeClass = "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/40";
+              } else if (activeAlert.state === AlertState.NOT_CLEARED) {
+                badgeLabel = "ESCALATED";
+                badgeClass = "bg-critical-soft text-critical-ink font-bold";
+              }
+            } else if (timedOutAlert) {
+              badgeLabel = "NO RESPONSE";
+              badgeClass = "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/30";
+            }
+
+            return (
+              <div
+                key={o.id}
+                className="flex items-center justify-between rounded-lg border p-2.5 bg-card hover:bg-muted/30 transition-colors"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-xs truncate">
+                      {o.rank} {o.name}
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground">({o.id.toUpperCase()})</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate">{j?.name}</p>
+                </div>
+
+                <span className={cn("rounded px-2 py-0.5 text-[10px] uppercase tracking-wider", badgeClass)}>
+                  {badgeLabel}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OfficerPhonePreview() {
+  return (
+    <Card className="rounded-lg shadow-none">
+      <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <Smartphone className="size-4 text-muted-foreground" aria-hidden />
+            Officer Phone Preview
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">Live mirror of mobile view (/officer)</p>
+        </div>
+        <span className="rounded bg-primary-soft px-2 py-0.5 text-[11px] font-bold text-primary">
+          Live Sync
+        </span>
+      </CardHeader>
+      <CardContent className="flex justify-center p-3">
+        <div className="relative h-[680px] w-[350px] overflow-hidden rounded-[36px] border-[6px] border-border bg-background shadow-2xl">
+          <iframe
+            src="/officer?embed=1&follow=1"
+            title="Officer Phone View"
+            className="h-full w-full border-none"
+          />
+        </div>
       </CardContent>
     </Card>
   );
@@ -284,7 +503,7 @@ function JunctionDetail() {
 
         <div className="flex items-center gap-3 rounded-md border px-3 py-2">
           <UserRound className="size-4 text-muted-foreground" aria-hidden />
-          <span className="flex-1 text-sm">
+          <span className="flex-1 text-sm font-semibold">
             {officer ? `${officer.rank} ${officer.name}` : "No officer online"}
           </span>
           {officer && <Chip tone={officer.online ? "clear" : "neutral"}>{officer.online ? "Online" : "Offline"}</Chip>}

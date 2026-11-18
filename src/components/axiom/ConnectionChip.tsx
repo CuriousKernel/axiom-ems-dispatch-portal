@@ -3,14 +3,29 @@ import { useAxiom } from "@/lib/axiom/store";
 import type { ConnectionState } from "@/lib/axiom/types";
 import { Chip } from "./StatusChip";
 
-export function ConnectionChip({ state }: { state?: ConnectionState }) {
+export function ConnectionChip({
+  state,
+  stale,
+}: {
+  state?: ConnectionState;
+  stale?: boolean;
+}) {
   const axiomConn = useAxiom((s) => s.connection);
   const connection = state ?? axiomConn;
 
-  if (connection === "reconnecting" || connection === "connecting")
+  if (stale || connection === "reconnecting") {
+    return (
+      <Chip tone="watch" icon={CloudOff} className="max-w-[280px] text-xs">
+        <span className="pulse-dot truncate">
+          Control Room not sending. Keep the Control Room window visible, or open /demo
+        </span>
+      </Chip>
+    );
+  }
+  if (connection === "connecting")
     return (
       <Chip tone="watch" icon={CloudOff}>
-        <span className="pulse-dot">{connection === "connecting" ? "Connecting" : "Reconnecting"}</span>
+        <span className="pulse-dot">Connecting</span>
       </Chip>
     );
   if (connection === "live")

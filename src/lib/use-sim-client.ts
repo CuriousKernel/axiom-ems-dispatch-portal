@@ -40,6 +40,7 @@ export function useSimClient() {
 
   const [state, setState] = useState<SimulationState>(() => hostSnapshot);
   const [connectionState, setConnectionState] = useState<ClientConnectionState>(() => _sharedConnState);
+  const [isStale, setIsStale] = useState(false);
   const lastMsgTimeRef = useRef(Date.now());
 
   useEffect(() => {
@@ -49,15 +50,18 @@ export function useSimClient() {
     const connListener = (s: SupabaseConnectionState) => setConnectionState(s);
     _connStateListeners.add(connListener);
 
-    // Heartbeat: if no state received in 3s and host isn't local, go reconnecting
+    // Heartbeat: if no state received in 3s and host isn't local, flag stale / reconnecting
     const heartbeatInterval = setInterval(() => {
       const hostRunning = useSimulator.getState()._tickHandle !== null;
       if (hostRunning) {
         // Host is in this tab — always live
+        setIsStale(false);
         setConnectionState("live");
         return;
       }
-      if (Date.now() - lastMsgTimeRef.current > 3000 && connectionState !== "local") {
+      const stale = Date.now() - lastMsgTimeRef.current > 3000;
+      setIsStale(stale);
+      if (stale) {
         setConnectionState("reconnecting");
       }
     }, 1000);
@@ -65,6 +69,7 @@ export function useSimClient() {
     const unsubscribe = transport.subscribe((nextState) => {
       lastMsgTimeRef.current = Date.now();
       setState(nextState);
+      setIsStale(false);
       setConnectionState("live");
     });
 
@@ -84,6 +89,7 @@ export function useSimClient() {
   return {
     state,
     connectionState,
+    isStale,
     sendCommand,
   };
 }

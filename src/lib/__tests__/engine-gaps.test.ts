@@ -110,9 +110,10 @@ describe("GAP 2 — 30-second NO_ACK timeout is called by the engine (not dead c
     const alertId = mandiAlert!.id;
     const sentTime = afterFirst.sentAtSimTime[alertId] ?? 0;
 
-    // Directly advance simTimeSeconds past the timeout threshold
+    // Directly advance simTimeSeconds and alertElapsedWallSeconds past the timeout threshold
     useSimulator.setState({
       simTimeSeconds: sentTime + ALERT_CONFIG.NO_ACK_TIMEOUT_S + 1,
+      alertElapsedWallSeconds: { [alertId]: ALERT_CONFIG.NO_ACK_TIMEOUT_S + 1 },
     });
 
     // Run another tick — engine should detect the sim-clock timeout and escalate.

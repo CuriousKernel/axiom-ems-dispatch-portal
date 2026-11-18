@@ -27,6 +27,7 @@ function makeSampleState(): SimulationState {
     simTimeSeconds: 42,
     speed: 2,
     paused: false,
+    alertTimeoutSeconds: 30,
     driverPriority: "P1",
     ambulance: {
       distanceMeters: 1250,

@@ -53,18 +53,20 @@ export class SupabaseBroadcastTransport implements SimTransport {
   }
 
   private async _connect() {
+    const supabaseUrl =
+      typeof import.meta !== "undefined" ? import.meta.env?.["VITE_SUPABASE_URL"] : undefined;
+    const supabaseKey =
+      typeof import.meta !== "undefined" ? import.meta.env?.["VITE_SUPABASE_ANON_KEY"] : undefined;
+
+    if (!supabaseUrl || !supabaseKey) {
+      this._setConnState("local");
+      return;
+    }
+
     try {
       // Dynamic import so that the whole app doesn't break if the package
-      // isn't installed or env vars are missing.
+      // isn't installed.
       const { createClient } = await import("@supabase/supabase-js");
-
-      const supabaseUrl = import.meta.env["VITE_SUPABASE_URL"] as string | undefined;
-      const supabaseKey = import.meta.env["VITE_SUPABASE_ANON_KEY"] as string | undefined;
-
-      if (!supabaseUrl || !supabaseKey) {
-        this._setConnState("local");
-        return;
-      }
 
       const supabase = createClient(supabaseUrl, supabaseKey);
       this.channel = supabase.channel(CHANNEL_NAME);

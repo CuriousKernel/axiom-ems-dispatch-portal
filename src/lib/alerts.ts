@@ -74,6 +74,12 @@ export interface AlertRecord {
   isLateAlert: boolean;
   /** Optional reason for escalation or inability to clear. */
   reason?: string | undefined;
+  /** Seconds remaining until NO_ACK escalation (wall-clock countdown). */
+  escalatesIn?: number | undefined;
+  /** Previous officer who held this alert before it was escalated. */
+  escalatedFrom?: string | undefined;
+  /** Officer who was timed-out / unable to clear. */
+  previousOfficerId?: string | undefined;
 }
 
 // ─── State machine ────────────────────────────────────────────────────────
@@ -137,10 +143,12 @@ export function escalateNoAck(
 ): AlertRecord {
   const ts = at ?? Date.now();
   // First mark it timed-out, then re-send to the escalated officer.
-  const timedOut = transitionAlert(record, AlertState.NO_ACK_TIMEOUT, "no ack within 30 s", ts);
+  const timedOut = transitionAlert(record, AlertState.NO_ACK_TIMEOUT, "no ack within timeout", ts);
   const reSent: AlertRecord = {
     ...timedOut,
     officerId: nextOfficerId,
+    escalatedFrom: record.officerId,
+    previousOfficerId: record.officerId,
   };
   return transitionAlert(reSent, AlertState.SENT, `escalated to officer ${nextOfficerId}`, ts);
 }
@@ -159,6 +167,8 @@ export function escalateNotCleared(
   const reSent: AlertRecord = {
     ...notCleared,
     officerId: nextOfficerId,
+    escalatedFrom: record.officerId,
+    previousOfficerId: record.officerId,
   };
   return transitionAlert(reSent, AlertState.SENT, `re-escalated to officer ${nextOfficerId}`, ts);
 }

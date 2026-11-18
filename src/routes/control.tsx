@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Sparkles,
   Sun,
+  Timer,
   TrafficCone,
   Users,
 } from "lucide-react";
@@ -25,6 +26,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAxiom } from "@/lib/axiom/store";
 import { useSimulator } from "@/lib/simulator-engine";
+import type { SimSpeed } from "@/lib/sim-transport";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/control")({
   head: () => ({
@@ -49,6 +52,15 @@ const NAV = [
 
 function ControlLayout() {
   const dark = useAxiom((s) => s.controlDark);
+  const startEngine = useSimulator((s) => s.startEngine);
+  const stopEngine = useSimulator((s) => s.stopEngine);
+
+  // Engine lifecycle: started once for the entire Control Room layout.
+  // Stays running across Live, Analytics, Officers, and Junctions tabs.
+  useEffect(() => {
+    startEngine();
+    return () => stopEngine();
+  }, [startEngine, stopEngine]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -79,10 +91,10 @@ function ControlLayout() {
         <div className="mt-auto">
           <Link
             to="/"
-            className="flex h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            <ArrowLeft className="size-4" aria-hidden />
-            Change role
+            <ArrowLeft className="size-4" />
+            Switch role
           </Link>
         </div>
       </aside>
@@ -104,8 +116,57 @@ function TopBar() {
   const speed = useSimulator((s) => s.speed);
   const setSpeed = useSimulator((s) => s.setSpeed);
   const paused = useSimulator((s) => s.paused);
-  const togglePaused = useSimulator((s) => s.togglePaused);
+  const startTrip = useSimulator((s) => s.startTrip);
+  const pauseTrip = useSimulator((s) => s.pauseTrip);
+  const resumeTrip = useSimulator((s) => s.resumeTrip);
   const restartTrip = useSimulator((s) => s.restartTrip);
+  const ambStatus = useSimulator((s) => s.ambulance.status);
+  const alertTimeout = useSimulator((s) => s.alertTimeoutSeconds);
+  const setAlertTimeout = useSimulator((s) => s.setAlertTimeout);
+
+  // Compute status badge & primary button state
+  let statusBadgeLabel = "IDLE";
+  let statusBadgeClass = "bg-muted text-muted-foreground border-border";
+
+  if (ambStatus === "arrived") {
+    statusBadgeLabel = "ARRIVED";
+    statusBadgeClass = "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30";
+  } else if (ambStatus === "running") {
+    if (paused) {
+      statusBadgeLabel = "PAUSED";
+      statusBadgeClass = "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30";
+    } else {
+      statusBadgeLabel = "RUNNING";
+      statusBadgeClass = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+    }
+  }
+
+  // Primary button config
+  let primaryLabel = "Start trip";
+  let primaryIcon = Play;
+  let primaryAction = startTrip;
+
+  if (ambStatus === "idle") {
+    primaryLabel = "Start trip";
+    primaryIcon = Play;
+    primaryAction = startTrip;
+  } else if (ambStatus === "running") {
+    if (paused) {
+      primaryLabel = "Resume";
+      primaryIcon = Play;
+      primaryAction = resumeTrip;
+    } else {
+      primaryLabel = "Pause";
+      primaryIcon = Pause;
+      primaryAction = pauseTrip;
+    }
+  } else if (ambStatus === "arrived") {
+    primaryLabel = "Restart";
+    primaryIcon = RotateCcw;
+    primaryAction = restartTrip;
+  }
+
+  const PrimaryIcon = primaryIcon;
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur">
@@ -138,6 +199,7 @@ function TopBar() {
         </ToggleGroup>
       </div>
 
+      {/* Speed Controls: 1x, 2x, 4x, 8x, 16x */}
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">Speed</span>
         <ToggleGroup
@@ -145,13 +207,13 @@ function TopBar() {
           size="sm"
           variant="outline"
           value={String(speed)}
-          onValueChange={(v) => v && setSpeed(Number(v) as 1 | 2 | 4)}
+          onValueChange={(v) => v && setSpeed(Number(v) as SimSpeed)}
         >
-          {[1, 2, 4].map((s) => (
+          {([1, 2, 4, 8, 16] as const).map((s) => (
             <ToggleGroupItem
               key={s}
               value={String(s)}
-              className="tnum px-3 data-[state=on]:bg-primary-soft data-[state=on]:text-primary"
+              className="tnum px-2.5 data-[state=on]:bg-primary-soft data-[state=on]:text-primary text-xs"
             >
               {s}x
             </ToggleGroupItem>
@@ -159,27 +221,56 @@ function TopBar() {
         </ToggleGroup>
       </div>
 
-      <div className="flex items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={togglePaused} aria-label={paused ? "Resume" : "Pause"}>
-              {paused ? <Play /> : <Pause />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{paused ? "Resume" : "Pause"} simulation</TooltipContent>
-        </Tooltip>
+      {/* Demo Setting: Alert Timeout (30s / 15s) */}
+      <div className="flex items-center gap-1.5 border-l pl-3">
+        <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground" title="Alert NO_ACK timeout">
+          <Timer className="size-3" />
+          Timeout
+        </span>
+        <ToggleGroup
+          type="single"
+          size="sm"
+          variant="outline"
+          value={String(alertTimeout)}
+          onValueChange={(v) => v && setAlertTimeout(Number(v) as 30 | 15)}
+        >
+          <ToggleGroupItem value="30" className="px-2 text-xs">
+            30s
+          </ToggleGroupItem>
+          <ToggleGroupItem value="15" className="px-2 text-xs">
+            15s
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      {/* Primary state-aware simulation button + Secondary Restart button */}
+      <div className="flex items-center gap-2 border-l pl-3">
+        {/* Status badge */}
+        <span className={cn("rounded border px-2 py-0.5 text-xs font-bold tracking-wider", statusBadgeClass)}>
+          {statusBadgeLabel}
+        </span>
+
+        {/* Primary button */}
+        <Button
+          size="sm"
+          variant={primaryLabel === "Pause" ? "outline" : "default"}
+          onClick={primaryAction}
+          className="gap-1.5 text-xs font-semibold"
+        >
+          <PrimaryIcon className="size-3.5" aria-hidden />
+          {primaryLabel}
+        </Button>
+
+        {/* Secondary Restart button */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Restart"
-              onClick={() => {
-                restartTrip();
-                toast("Simulation restarted from Connaught Place");
-              }}
+              aria-label="Restart simulation"
+              onClick={restartTrip}
             >
-              <RotateCcw />
+              <RotateCcw className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Restart simulation</TooltipContent>
@@ -187,7 +278,6 @@ function TopBar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <ConnectionChip />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" onClick={toggleControlDark} aria-label="Toggle dark mode">

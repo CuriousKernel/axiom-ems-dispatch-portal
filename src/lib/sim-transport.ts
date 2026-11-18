@@ -29,11 +29,14 @@ export interface SimEvent {
   message: string;
 }
 
+export type SimSpeed = 1 | 2 | 4 | 8 | 16;
+
 export interface SimulationState {
   simTimeSeconds: number;
-  speed: 1 | 2 | 4;
+  speed: SimSpeed;
   paused: boolean;
   driverPriority: Priority;
+  alertTimeoutSeconds: 30 | 15;
   ambulance: {
     distanceMeters: number;
     speedKmh: number;
@@ -58,7 +61,8 @@ export type SimCommand =
   | { type: "PAUSE_TRIP" }
   | { type: "RESUME_TRIP" }
   | { type: "RESTART_TRIP" }
-  | { type: "SET_SPEED"; speed: 1 | 2 | 4 }
+  | { type: "SET_SPEED"; speed: SimSpeed }
+  | { type: "SET_ALERT_TIMEOUT"; timeout: 30 | 15 }
   | { type: "SET_PRIORITY"; priority: Priority }
   | { type: "SET_DENSITY"; junctionId: string; density: number }
   | { type: "APPLY_SCENARIO"; scenario: ScenarioName }

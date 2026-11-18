@@ -6,8 +6,7 @@
  * Renders in the Live tab of the Control Room.
  */
 
-import { useEffect } from "react";
-import { Gauge, Play, RotateCcw } from "lucide-react";
+import { Gauge } from "lucide-react";
 import { StatusChip } from "@/components/axiom/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -21,18 +20,8 @@ const SCENARIOS: ScenarioName[] = ["Jam Mandi House", "Jam ITO", "Clear all"];
 
 export function SimulatorPanel() {
   const readings = useSimulator((s) => s.readings);
-  const startEngine = useSimulator((s) => s.startEngine);
-  const stopEngine = useSimulator((s) => s.stopEngine);
   const setDensity = useSimulator((s) => s.setDensity);
   const applyScenario = useSimulator((s) => s.applyScenario);
-  const ambulance = useSimulator((s) => s.ambulance);
-  const startTrip = useSimulator((s) => s.startTrip);
-  const restartTrip = useSimulator((s) => s.restartTrip);
-
-  useEffect(() => {
-    startEngine();
-    return () => stopEngine();
-  }, [startEngine, stopEngine]);
 
   const readingList = Object.values(readings);
 
@@ -44,18 +33,6 @@ export function SimulatorPanel() {
           Simulator controls
         </CardTitle>
         <div className="flex flex-wrap items-center gap-2">
-          {ambulance.status === "idle" && (
-            <Button size="sm" onClick={startTrip} className="gap-1.5 text-xs">
-              <Play className="size-3.5" aria-hidden />
-              Start trip
-            </Button>
-          )}
-          {ambulance.status === "arrived" && (
-            <Button size="sm" variant="outline" onClick={restartTrip} className="gap-1.5 text-xs">
-              <RotateCcw className="size-3.5" aria-hidden />
-              Restart trip
-            </Button>
-          )}
           {SCENARIOS.map((s) => (
             <Button
               key={s}
