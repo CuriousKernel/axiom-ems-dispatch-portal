@@ -1,14 +1,14 @@
 # Axiom EMS - Delhi Traffic Police Emergency Corridor Coordination
 
-[![🚀 Launch App on Web](https://img.shields.io/badge/🚀_LAUNCH_APP_ON_WEB-CLICK_HERE_TO_RUN-blue?style=for-the-badge&logo=rocket)](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com)
-[![🎯 3-in-1 Presenter Demo](https://img.shields.io/badge/🎯_3--in--1_LIVE_DEMO-RUN_NOW-emerald?style=for-the-badge)](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com/demo)
+[![🚀 Launch App on Web](https://img.shields.io/badge/🚀_LAUNCH_APP_ON_WEB-CLICK_HERE_TO_RUN-blue?style=for-the-badge&logo=rocket)](https://axiom-ems-dispatch-portal-14o8.vercel.app/)
+[![🎯 3-in-1 Presenter Demo](https://img.shields.io/badge/🎯_3--in--1_LIVE_DEMO-RUN_NOW-emerald?style=for-the-badge)](https://axiom-ems-dispatch-portal-14o8.vercel.app/demo)
 
 ---
 
-### 🌐 Direct One-Click Web Links (No Login Required)
-- **[👉 CLICK HERE TO LAUNCH AXIOM-EMS ON WEB](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com)**  
+### 🌐 Direct One-Click Web Links
+- **[👉 CLICK HERE TO LAUNCH AXIOM-EMS ON WEB](https://axiom-ems-dispatch-portal-14o8.vercel.app/)**  
   *Direct standalone web deployment. Anyone clicking this opens the live running app immediately.*
-- **[👉 CLICK HERE TO LAUNCH 3-IN-1 DEMO](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com/demo)**  
+- **[👉 CLICK HERE TO LAUNCH 3-IN-1 DEMO](https://axiom-ems-dispatch-portal-14o8.vercel.app/demo)**  
   *Direct live presenter demo showing Control Room, Ambulance Driver HUD, and Traffic Officer in one screen.*
 
 ---
