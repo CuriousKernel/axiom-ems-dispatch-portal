@@ -106,20 +106,22 @@ describe("Demo Flow & Engine Controls (Part A)", () => {
     expect(useSimulator.getState().ambulance.distanceMeters).toBeGreaterThan(distBeforePause);
   });
 
-  it("speed: 8x and 16x are accepted and scale distance; invalid speeds rejected", () => {
+  it("speed: 1x, 2x, 4x, 8x are accepted and scale distance; invalid speeds rejected", () => {
     const s = useSimulator.getState();
+
+    // Set valid speed 4
+    s.setSpeed(4);
+    expect(useSimulator.getState().speed).toBe(4);
 
     // Set valid speed 8
     s.setSpeed(8);
     expect(useSimulator.getState().speed).toBe(8);
 
-    // Set valid speed 16
-    s.setSpeed(16);
-    expect(useSimulator.getState().speed).toBe(16);
-
-    // Attempt invalid speed (e.g. 5)
+    // Attempt invalid speed (e.g. 5 or 16)
     s.setSpeed(5 as SimSpeed);
-    expect(useSimulator.getState().speed).toBe(16); // unchanged
+    expect(useSimulator.getState().speed).toBe(8); // unchanged
+    s.setSpeed(16 as SimSpeed);
+    expect(useSimulator.getState().speed).toBe(8); // unchanged
 
     // Test scaling: measure distance at 1x vs 8x with same dt
     s.restartTrip();

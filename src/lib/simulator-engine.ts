@@ -373,7 +373,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
     },
 
     setSpeed(speed: SimSpeed) {
-      if ([1, 2, 4, 8, 16].includes(speed)) {
+      if ([1, 2, 4, 8].includes(speed)) {
         set({ speed });
         transport.publish(buildSnapshot());
       }

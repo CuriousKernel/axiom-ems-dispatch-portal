@@ -29,7 +29,7 @@ export interface SimEvent {
   message: string;
 }
 
-export type SimSpeed = 1 | 2 | 4 | 8 | 16;
+export type SimSpeed = 1 | 2 | 4 | 8;
 
 export interface SimulationState {
   simTimeSeconds: number;
