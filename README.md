@@ -22,3 +22,25 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Demo Setup (Judging & Presentation)
+
+Axiom-EMS supports two demo modes depending on your setup:
+
+### Option A: 3-in-1 Unified Demo (Recommended for Single Laptop / Screen)
+Navigate to `/demo` in your browser.
+- **How it works**: Displays the Control Room, Ambulance Driver HUD, and Traffic Officer screens in three side-by-side viewports inside a single desktop window.
+- **Zero Configuration**: Uses the browser's native `BroadcastChannel` for instantaneous synchronization between the three iframes.
+- **No Background Throttling**: Because all three screens live in active iframes in one window, browser timers are never throttled by background tab power-saving features.
+- Includes an interactive **Presenter Checklist** guiding judges through a complete 2-minute emergency dispatch and clearance sequence.
+
+### Option B: Multi-Device / Real Phones Setup
+To demonstrate with a laptop for the Control Room and physical smartphones for the Driver and Officer:
+1. Supply Supabase credentials in your `.env` (or environment variables):
+   ```env
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+2. With these variables set, Axiom-EMS switches transport to Supabase Realtime Broadcast (`corridor-sim` channel). State changes and commands sync seamlessly across physical devices over the internet.
+3. **Limitation notice**: Without `VITE_SUPABASE_*` credentials, the application automatically falls back to local `BroadcastChannel`. In local mode, synchronization works across tabs and iframes within the same browser profile on one device, but cannot bridge physical devices without a shared backend channel.
+

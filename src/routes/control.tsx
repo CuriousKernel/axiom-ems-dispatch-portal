@@ -26,6 +26,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAxiom } from "@/lib/axiom/store";
 import { useSimulator } from "@/lib/simulator-engine";
+import { useTripRecorder } from "@/lib/use-trip-recorder";
 import type { SimSpeed } from "@/lib/sim-transport";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +52,7 @@ const NAV = [
 ] as const;
 
 function ControlLayout() {
+  useTripRecorder();
   const dark = useAxiom((s) => s.controlDark);
   const startEngine = useSimulator((s) => s.startEngine);
   const stopEngine = useSimulator((s) => s.stopEngine);

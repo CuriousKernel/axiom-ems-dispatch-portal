@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Ambulance, ChevronRight, MonitorDot, Smartphone, UserRound, type LucideIcon } from "lucide-react";
+import { Ambulance, ChevronRight, MonitorDot, Smartphone, Sparkles, UserRound, type LucideIcon } from "lucide-react";
 import { AppFooter } from "@/components/axiom/AppFooter";
 import { BrandMark } from "@/components/axiom/BrandMark";
 import { ConnectionChip } from "@/components/axiom/ConnectionChip";
@@ -81,7 +81,28 @@ function RoleSelector() {
           </p>
         </div>
 
-        <ul className="mt-10 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 flex items-center justify-between rounded-xl border-2 border-primary/30 bg-primary-soft/40 p-4 transition-colors hover:border-primary/60">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow">
+              <Sparkles className="size-5" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-foreground">Judge Demo Mode (All 3 Views in One Screen)</p>
+              <p className="text-xs text-muted-foreground">
+                Run the Control Room, Driver phone, and Officer phone side-by-side with zero background lag.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/demo"
+            className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground shadow hover:bg-primary/90"
+          >
+            Open 3-in-1 Demo
+            <ChevronRight className="ml-1 size-3.5" />
+          </Link>
+        </div>
+
+        <ul className="mt-6 grid gap-4 md:grid-cols-3">
           {ROLES.map((r) => (
             <li key={r.to}>
               <Link

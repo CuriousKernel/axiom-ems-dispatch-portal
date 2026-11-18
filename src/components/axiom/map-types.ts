@@ -5,6 +5,7 @@ export interface AmbulanceMarkerData extends LatLng {
 }
 
 export interface CorridorMapProps {
+  variant?: "control" | "driver" | undefined;
   junctions: (Junction & { status: JunctionStatus })[];
   officers?: Officer[] | undefined;
   ambulance?: AmbulanceMarkerData | null | undefined;
@@ -19,4 +20,7 @@ export interface CorridorMapProps {
   focus?: LatLng[] | undefined;
   interactive?: boolean | undefined;
   className?: string | undefined;
+  /** Driver mode camera follow callbacks */
+  onUserDragAway?: () => void;
+  recenterTrigger?: number | undefined;
 }
