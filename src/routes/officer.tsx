@@ -3,15 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
-  Bell,
   CheckCircle2,
-  CircleCheck,
-  History,
-  Inbox,
-  Radio,
   ShieldAlert,
   ShieldCheck,
-  Timer,
   Volume2,
   VolumeX,
   XCircle,
@@ -19,14 +13,12 @@ import {
 import { AppFooter } from "@/components/axiom/AppFooter";
 import { ConnectionChip } from "@/components/axiom/ConnectionChip";
 import { MapFrame } from "@/components/axiom/MapFrame";
-import { Chip, StatusChip } from "@/components/axiom/StatusChip";
-import { EmptyState } from "@/components/axiom/EmptyState";
+import { StatusChip } from "@/components/axiom/StatusChip";
 import { Button } from "@/components/ui/button";
 import { formatDuration } from "@/lib/axiom/format";
 import {
   AMBULANCE,
   DEFAULT_OFFICER_ID,
-  MOCK_OFFICER_HISTORY,
   OFFICERS,
   junctionById,
   officerById,
@@ -50,8 +42,9 @@ export const Route = createFileRoute("/officer")({
   component: OfficerView,
 });
 
-type Tab = "now" | "history";
-
+/**
+ * Multi-tone urgent emergency siren using WebAudio (3 ascending tones)
+ */
 function playAlertBeep() {
   if (typeof window === "undefined") return;
   try {
@@ -61,28 +54,54 @@ function playAlertBeep() {
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1760, ctx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.35);
+    const t = ctx.currentTime;
+
+    // Tone 1: 660 Hz
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sawtooth";
+    osc1.frequency.setValueAtTime(660, t);
+    gain1.gain.setValueAtTime(0.2, t);
+    gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(t);
+    osc1.stop(t + 0.15);
+
+    // Tone 2: 880 Hz
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sawtooth";
+    osc2.frequency.setValueAtTime(880, t + 0.16);
+    gain2.gain.setValueAtTime(0.25, t + 0.16);
+    gain2.gain.exponentialRampToValueAtTime(0.01, t + 0.32);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(t + 0.16);
+    osc2.stop(t + 0.32);
+
+    // Tone 3: 1320 Hz (urgent peak)
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = "sawtooth";
+    osc3.frequency.setValueAtTime(1320, t + 0.33);
+    gain3.gain.setValueAtTime(0.3, t + 0.33);
+    gain3.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    osc3.connect(gain3);
+    gain3.connect(ctx.destination);
+    osc3.start(t + 0.33);
+    osc3.stop(t + 0.6);
   } catch {
     // Audio context may be restricted before user gesture
   }
 }
 
 function OfficerView() {
-  const [tab, setTab] = useState<Tab>("now");
   const [officerId, setOfficerId] = useState<string>(DEFAULT_OFFICER_ID);
   const [followAlert, setFollowAlert] = useState<boolean>(true); // Demo: follow active alert (default ON)
   const [isEmbedded, setIsEmbedded] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
+  const [isChangingOfficer, setIsChangingOfficer] = useState<boolean>(false);
 
   // Parse embed & follow query parameters from URL
   useEffect(() => {
@@ -141,7 +160,7 @@ function OfficerView() {
 
   return (
     <div className={cn("mx-auto flex min-h-dvh w-full max-w-[420px] flex-col bg-background", isEmbedded && "min-h-full")}>
-      {/* Big Always-Visible Identity Header */}
+      {/* Identity Header */}
       <header className="flex flex-col border-b bg-card px-4 py-3 gap-2">
         <div className="flex items-center justify-between">
           {!isEmbedded && (
@@ -181,33 +200,49 @@ function OfficerView() {
               title={soundEnabled ? "Sound enabled" : "Enable sound alerts"}
             >
               {soundEnabled ? <Volume2 className="size-3" /> : <VolumeX className="size-3" />}
-              {soundEnabled ? "Sound on" : "Enable sound"}
+              {soundEnabled ? "Sound on" : "Sound"}
             </button>
             <ConnectionChip state={connectionState} stale={isStale} />
           </div>
         </div>
 
-        {/* Identity Details & Demo Selector */}
+        {/* You are: <rank> <name> — <Junction> [Change] */}
         <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
+            {isChangingOfficer ? (
               <select
                 aria-label="Select officer"
                 value={officerId}
+                autoFocus
+                onBlur={() => setIsChangingOfficer(false)}
                 onChange={(e) => {
                   setOfficerId(e.target.value);
-                  setFollowAlert(false); // Manually selecting disables auto-follow
+                  setFollowAlert(false);
+                  setIsChangingOfficer(false);
                 }}
-                className="bg-transparent text-sm font-bold text-foreground focus:outline-none"
+                className="bg-card text-xs font-bold text-foreground border rounded px-1.5 py-0.5 focus:outline-none w-full"
               >
                 {OFFICERS.map((o) => (
-                  <option key={o.id} value={o.id} className="bg-popover text-foreground">
-                    {o.rank} {o.name} ({junctionById(o.junctionId)?.name})
+                  <option key={o.id} value={o.id}>
+                    {o.rank} {o.name} — {junctionById(o.junctionId)?.name}
                   </option>
                 ))}
               </select>
-            </div>
-            <p className="truncate text-xs text-muted-foreground">Assigned: {junction.name}</p>
+            ) : (
+              <div className="flex items-center gap-1 text-xs">
+                <span className="text-muted-foreground">You are:</span>
+                <span className="font-bold text-foreground truncate">
+                  {officer.rank} {officer.name} — {junction.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsChangingOfficer(true)}
+                  className="text-primary hover:underline font-semibold ml-1 text-[11px]"
+                >
+                  [Change]
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Follow Active Alert Toggle */}
@@ -215,7 +250,7 @@ function OfficerView() {
             type="button"
             onClick={() => setFollowAlert((v) => !v)}
             className={cn(
-              "rounded px-2 py-1 text-[11px] font-semibold transition-colors border",
+              "rounded px-2 py-0.5 text-[11px] font-semibold transition-colors border shrink-0",
               followAlert
                 ? "bg-primary-soft text-primary border-primary/30"
                 : "bg-muted text-muted-foreground border-border",
@@ -227,54 +262,25 @@ function OfficerView() {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Single Screen */}
       <main className="flex-1 overflow-y-auto">
-        {tab === "now" ? (
-          myActiveAlert ? (
-            <AlertTakeover
-              alert={myActiveAlert}
-              officer={officer}
-              state={state}
-              sendCommand={sendCommand}
-            />
-          ) : (
-            <NowTab
-              officer={officer}
-              state={state}
-              connectionState={connectionState}
-              isStale={isStale}
-              escalatedAlert={escalatedFromMeAlert}
-            />
-          )
+        {myActiveAlert ? (
+          <AlertTakeover
+            alert={myActiveAlert}
+            officer={officer}
+            state={state}
+            sendCommand={sendCommand}
+          />
         ) : (
-          <HistoryTab officer={officer} state={state} />
+          <StandingByView
+            officer={officer}
+            state={state}
+            escalatedAlert={escalatedFromMeAlert}
+          />
         )}
       </main>
 
       {!isEmbedded && <AppFooter />}
-
-      {/* Bottom tabs */}
-      <nav className="grid grid-cols-2 border-t bg-card" aria-label="Officer sections">
-        {(
-          [
-            { id: "now", label: "Now", icon: Bell },
-            { id: "history", label: "History", icon: History },
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            aria-current={tab === t.id ? "page" : undefined}
-            className={cn(
-              "flex h-14 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors",
-              tab === t.id ? "text-primary" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <t.icon className="size-4" aria-hidden />
-            {t.label}
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }
@@ -287,8 +293,8 @@ function AlertTakeover({
   state,
   sendCommand,
 }: {
-  alert: typeof useSimClient extends () => { state: infer S } ? (S extends { alerts: (infer A)[] } ? A : never) : never;
-  officer: ReturnType<typeof officerById> extends infer O ? NonNullable<O> : never;
+  alert: AlertRecord;
+  officer: NonNullable<ReturnType<typeof officerById>>;
   state: ReturnType<typeof useSimClient>["state"];
   sendCommand: ReturnType<typeof useSimClient>["sendCommand"];
 }) {
@@ -448,7 +454,7 @@ function AlertTakeover({
             }}
           >
             <ShieldCheck className="mr-2 size-5" />
-            2. Mark In Position (Start 3x Drain)
+            2. In Position (Drain Lane)
           </Button>
         )}
 
@@ -466,7 +472,7 @@ function AlertTakeover({
               }}
             >
               <CheckCircle2 className="mr-2 size-5" />
-              3. Road Cleared (Start Verification)
+              3. Road Cleared (Verify)
             </Button>
             <Button
               variant="outline"
@@ -477,12 +483,12 @@ function AlertTakeover({
                   type: "CANT_CLEAR",
                   alertId: alert.id,
                   officerId: officer.id,
-                  reason: "Heavy traffic obstruction / VIP movement",
+                  reason: "Heavy traffic obstruction",
                 });
               }}
             >
               <XCircle className="mr-2 size-4" />
-              Can't Clear (Request Escalation)
+              Can't Clear
             </Button>
           </div>
         )}
@@ -508,19 +514,15 @@ function AlertTakeover({
   );
 }
 
-// ─── Idle Screen: Standing By (Never looks dead) ────────────────────────────
+// ─── Idle Screen: Standing By ──────────────────────────────────────────────
 
-function NowTab({
+function StandingByView({
   officer,
   state,
-  connectionState,
-  isStale,
   escalatedAlert,
 }: {
-  officer: ReturnType<typeof officerById> extends infer O ? NonNullable<O> : never;
+  officer: NonNullable<ReturnType<typeof officerById>>;
   state: ReturnType<typeof useSimClient>["state"];
-  connectionState: ReturnType<typeof useSimClient>["connectionState"];
-  isStale?: boolean | undefined;
   escalatedAlert?: AlertRecord | undefined;
 }) {
   const junction = junctionById(officer.junctionId)!;
@@ -531,6 +533,11 @@ function NowTab({
   const clearTime = reading ? reading.clearTime : 0;
   const distMeters = reading ? reading.distanceMeters - state.ambulance.distanceMeters : 0;
 
+  // Plain words for junction traffic
+  let trafficWords = "Light traffic, road flowing normally";
+  if (queueCount > 25) trafficWords = "Heavy traffic queue on approach";
+  else if (queueCount > 10) trafficWords = "Moderate traffic queue";
+
   return (
     <div className="flex flex-col gap-4 p-4">
       {/* Escalation notification if this officer timed out */}
@@ -538,29 +545,28 @@ function NowTab({
         <div className="flex items-center gap-2 rounded-lg border-2 border-amber-500 bg-amber-500/15 p-3 text-xs font-semibold text-amber-950 dark:text-amber-200 shadow-sm">
           <AlertTriangle className="size-5 text-amber-600 shrink-0" />
           <div className="flex-1">
-            <p className="font-bold">No response recorded</p>
+            <p className="font-bold">No reply</p>
             <p className="text-[11px] font-normal">
-              Alert for {junctionById(escalatedAlert.junctionId)?.name ?? "junction"} escalated to{" "}
-              <strong>{formatOfficerName(escalatedAlert.officerId)}</strong>
+              Passed to <strong>{formatOfficerName(escalatedAlert.officerId)}</strong>
             </p>
           </div>
         </div>
       )}
 
-      {/* Idle Card */}
+      {/* Standing By Card */}
       <section className="flex flex-col items-center rounded-xl border bg-card px-5 py-6 text-center shadow-sm">
         {/* Pulsing Connected Dot */}
         <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
           <span className="size-2 rounded-full bg-emerald-500 animate-ping" />
-          <span>Standing by · Connected to Control Room</span>
+          <span>Standing by · Connected</span>
         </div>
 
         <h1 className="mt-4 text-display font-bold">All Clear</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          No emergency alert at {junction.name}. Approach lane normal.
+          No emergency alert at {junction.name}. {trafficWords}.
         </p>
 
-        {/* Live Ambulance Corridor Info */}
+        {/* Live Ambulance Distance & ETA to THIS junction */}
         <div className="mt-6 w-full rounded-lg bg-muted/60 p-3 text-left">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="font-medium">Ambulance on corridor</span>
@@ -618,77 +624,8 @@ function NowTab({
       </section>
 
       <p className="px-2 text-center text-[11px] text-muted-foreground">
-        Full-screen alert takeover with siren and vibration fires automatically if your junction turns critical.
+        Full-screen emergency alert with alarm fires automatically if your junction turns critical.
       </p>
-    </div>
-  );
-}
-
-// ─── History Tab ────────────────────────────────────────────────────────────
-
-function HistoryTab({
-  officer,
-  state,
-}: {
-  officer: ReturnType<typeof officerById> extends infer O ? NonNullable<O> : never;
-  state: ReturnType<typeof useSimClient>["state"];
-}) {
-  const [showAll, setShowAll] = useState(false);
-
-  // Completed alerts for this officer or junction from simulation
-  const simHistory = state.alerts
-    .filter(
-      (a) =>
-        (a.officerId === officer.id || a.junctionId === officer.junctionId) &&
-        a.state === AlertState.VERIFIED_CLEAR,
-    )
-    .map((a) => {
-      const start = a.transitions[0]?.at ?? a.createdAt;
-      const end = a.transitions[a.transitions.length - 1]?.at ?? start;
-      const responseSeconds = Math.max(1, Math.round((end - start) / 1000));
-      return {
-        id: a.id,
-        junctionId: a.junctionId,
-        date: "Today, simulation run",
-        responseSeconds,
-        outcome: "Verified clear" as const,
-      };
-    });
-
-  const items = [...simHistory, ...MOCK_OFFICER_HISTORY];
-  const visible = showAll ? items : items.slice(0, 5);
-  const avg = items.length
-    ? Math.round(items.reduce((a, b) => a + b.responseSeconds, 0) / items.length)
-    : 0;
-
-  if (items.length === 0)
-    return <EmptyState icon={Inbox} title="No alerts yet" body="Alerts you handle will appear here with response times." />;
-
-  return (
-    <div className="flex flex-col gap-4 p-4">
-      <section className="rounded-lg border bg-card p-4">
-        <p className="text-sm text-muted-foreground">Average response</p>
-        <p className="tnum text-display font-semibold">{avg} s</p>
-        <p className="text-xs text-muted-foreground">Across {items.length} corridor alerts</p>
-      </section>
-
-      <ul className="divide-y rounded-lg border bg-card">
-        {visible.map((h) => (
-          <li key={h.id} className="flex items-center gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{junctionById(h.junctionId)?.name}</p>
-              <p className="text-xs text-muted-foreground">{h.date}</p>
-            </div>
-            <span className="tnum text-sm font-medium">{h.responseSeconds} s</span>
-            <Chip tone={h.outcome === "Verified clear" ? "clear" : "watch"}>{h.outcome}</Chip>
-          </li>
-        ))}
-      </ul>
-      {items.length > 5 && !showAll && (
-        <Button variant="ghost" size="touch" onClick={() => setShowAll(true)}>
-          View all
-        </Button>
-      )}
     </div>
   );
 }

@@ -127,7 +127,7 @@ export function DriverView() {
   const nextAlert = state.alerts.find((a) => a.junctionId === nextJunction.id);
 
   // Status message for top card
-  let nextStatusText = "Green corridor ready";
+  let nextStatusText = `${nextJunction.name}: road clear, go`;
   let nextStatusTone: "clear" | "watch" | "critical" = "clear";
 
   if (state.rerouted && nextJunction.id === "ito") {
@@ -135,16 +135,19 @@ export function DriverView() {
     nextStatusTone = "critical";
   } else if (nextAlert) {
     if (nextAlert.state === "IN_POSITION" || nextAlert.state === "CLEARING") {
-      nextStatusText = "Officer in position — 3x priority clearance";
+      nextStatusText = `${nextJunction.name}: officer clearing the road`;
       nextStatusTone = "watch";
     } else if (nextAlert.state === "ACKNOWLEDGED") {
-      nextStatusText = "Officer dispatched to junction";
+      nextStatusText = `${nextJunction.name}: officer in position`;
       nextStatusTone = "watch";
     } else if (nextAlert.state === "VERIFIED_CLEAR") {
-      nextStatusText = "Junction confirmed clear";
+      nextStatusText = `${nextJunction.name}: road clear, go`;
       nextStatusTone = "clear";
+    } else if (nextAlert.state === "NOT_CLEARED") {
+      nextStatusText = `${nextJunction.name}: no reply, rerouting`;
+      nextStatusTone = "critical";
     } else {
-      nextStatusText = "Heavy queue — clearing underway";
+      nextStatusText = `${nextJunction.name}: clearing requested`;
       nextStatusTone = "critical";
     }
   }
