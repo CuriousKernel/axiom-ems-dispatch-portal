@@ -335,7 +335,7 @@ export function DemoPage() {
       {/* ── 3-Pane Viewport Container ───────────────────────────────────────── */}
       <main className="flex-1 p-3 flex flex-col xl:flex-row gap-4 overflow-x-auto min-h-0">
         {/* Pane 1: Control Room Dashboard (Desktop) */}
-        <section className="flex flex-col flex-1 min-w-[560px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
+        <section className="flex flex-col flex-1 min-w-[700px] xl:min-w-[780px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-300">
             <div className="flex items-center gap-2">
               <Laptop className="size-4 text-primary" />
@@ -355,7 +355,7 @@ export function DemoPage() {
           </div>
           <div className="flex-1 min-h-[720px] bg-background">
             <iframe
-              src="/control"
+              src="/control?embed=1"
               title="Control Room View"
               className="h-full w-full border-0"
             />

@@ -60,6 +60,14 @@ function ControlLayout() {
   useTripRecorder();
   const startEngine = useSimulator((s) => s.startEngine);
   const stopEngine = useSimulator((s) => s.stopEngine);
+  const [isEmbedded, setIsEmbedded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      setIsEmbedded(p.get("embed") === "1");
+    }
+  }, []);
 
   // Engine lifecycle: started once for the entire Control Room layout.
   // Stays running across Live and Report tabs.
@@ -69,49 +77,63 @@ function ControlLayout() {
   }, [startEngine, stopEngine]);
 
   return (
-    <div className="grid min-h-screen w-full min-w-0 grid-cols-[200px_1fr] bg-background text-foreground">
-      <aside className="sticky top-0 flex h-screen flex-col border-r bg-sidebar px-3 py-4">
-        <div className="px-2 pb-6">
-          <BrandMark />
-          <p className="mt-1 pl-9 text-xs text-muted-foreground">Control Room</p>
+    <div className={cn(
+      "grid min-h-screen w-full min-w-0 bg-background text-foreground",
+      isEmbedded ? "grid-cols-[60px_1fr]" : "grid-cols-[200px_1fr]"
+    )}>
+      <aside className={cn(
+        "sticky top-0 flex h-screen flex-col border-r bg-sidebar py-4",
+        isEmbedded ? "px-1.5 items-center" : "px-3"
+      )}>
+        <div className={cn("pb-4", isEmbedded ? "px-0 text-center" : "px-2 pb-6")}>
+          <BrandMark compact={isEmbedded} />
+          {!isEmbedded && <p className="mt-1 pl-9 text-xs text-muted-foreground">Control Room</p>}
         </div>
-        <nav className="flex flex-col gap-1" aria-label="Control room sections">
+        <nav className="flex flex-col gap-1 w-full" aria-label="Control room sections">
           {NAV.map((n) => (
             <Link
               key={n.to}
               to={n.to}
               activeOptions={{ exact: n.exact }}
-              className="flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-accent"
+              title={n.label}
+              className={cn(
+                "flex h-10 items-center rounded-md text-sm font-medium text-sidebar-foreground transition-colors hover:bg-accent",
+                isEmbedded ? "justify-center px-0 w-full" : "gap-3 px-3"
+              )}
               activeProps={{ className: "bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent" }}
             >
-              <n.icon className="size-4" aria-hidden />
-              {n.label}
+              <n.icon className="size-4 shrink-0" aria-hidden />
+              {!isEmbedded && <span>{n.label}</span>}
             </Link>
           ))}
         </nav>
-        <div className="mt-auto">
+        <div className="mt-auto w-full">
           <Link
             to="/"
-            className="flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+            title="Switch role"
+            className={cn(
+              "flex h-10 items-center rounded-md text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground",
+              isEmbedded ? "justify-center px-0 w-full" : "gap-3 px-3"
+            )}
           >
-            <ArrowLeft className="size-4" />
-            Switch role
+            <ArrowLeft className="size-4 shrink-0" />
+            {!isEmbedded && <span>Switch role</span>}
           </Link>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-col">
-        <TopBar />
-        <div className="flex flex-1 flex-col gap-4 p-4">
+        <TopBar isEmbedded={isEmbedded} />
+        <div className={cn("flex flex-1 flex-col gap-4", isEmbedded ? "p-2.5" : "p-4")}>
           <Outlet />
         </div>
-        <AppFooter className="border-t" />
+        {!isEmbedded && <AppFooter className="border-t" />}
       </div>
     </div>
   );
 }
 
-function TopBar() {
+function TopBar({ isEmbedded = false }: { isEmbedded?: boolean }) {
   const speed = useSimulator((s) => s.speed);
   const setSpeed = useSimulator((s) => s.setSpeed);
   const paused = useSimulator((s) => s.paused);
@@ -177,13 +199,16 @@ function TopBar() {
   const PrimaryIcon = primaryIcon;
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card/95 px-4 backdrop-blur">
-      <div className="flex items-center gap-3">
+    <header className={cn(
+      "sticky top-0 z-20 flex items-center justify-between border-b bg-card/95 backdrop-blur",
+      isEmbedded ? "h-13 px-3 gap-2 flex-wrap" : "h-16 px-4"
+    )}>
+      <div className="flex items-center gap-2.5 flex-wrap">
         <ConnectionChip />
 
         {/* Primary state-aware simulation button */}
-        <div className="flex items-center gap-2 border-l pl-3">
-          <span className={cn("rounded border px-2 py-0.5 text-xs font-bold tracking-wider", statusBadgeClass)}>
+        <div className="flex items-center gap-1.5 border-l pl-2.5">
+          <span className={cn("rounded border px-1.5 py-0.5 text-[11px] font-bold tracking-wider", statusBadgeClass)}>
             {statusBadgeLabel}
           </span>
 
@@ -191,7 +216,7 @@ function TopBar() {
             size="sm"
             variant={primaryLabel === "Pause" ? "outline" : "default"}
             onClick={primaryAction}
-            className="gap-1.5 text-xs font-semibold"
+            className="h-8 gap-1.5 text-xs font-semibold px-2.5"
           >
             <PrimaryIcon className="size-3.5" aria-hidden />
             {primaryLabel}
@@ -202,10 +227,11 @@ function TopBar() {
               <Button
                 variant="ghost"
                 size="icon"
+                className="size-8"
                 aria-label="Restart simulation"
                 onClick={restartTrip}
               >
-                <RotateCcw className="size-4" />
+                <RotateCcw className="size-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Restart simulation</TooltipContent>
@@ -213,8 +239,8 @@ function TopBar() {
         </div>
 
         {/* Speed Controls: 1x, 2x, 4x, 8x */}
-        <div className="flex items-center gap-2 border-l pl-3">
-          <span className="text-xs font-medium text-muted-foreground">Speed</span>
+        <div className="flex items-center gap-1.5 border-l pl-2.5">
+          <span className="text-[11px] font-medium text-muted-foreground hidden sm:inline">Speed</span>
           <ToggleGroup
             type="single"
             size="sm"
@@ -226,7 +252,7 @@ function TopBar() {
               <ToggleGroupItem
                 key={s}
                 value={String(s)}
-                className="tnum px-2.5 data-[state=on]:bg-primary-soft data-[state=on]:text-primary text-xs"
+                className="tnum px-1.5 h-7 data-[state=on]:bg-primary-soft data-[state=on]:text-primary text-[11px]"
               >
                 {s}x
               </ToggleGroupItem>
@@ -235,12 +261,12 @@ function TopBar() {
         </div>
 
         {/* Demo tools dropdown */}
-        <div className="border-l pl-3">
+        <div className="border-l pl-2.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs font-medium">
+              <Button variant="outline" size="sm" className="h-8 gap-1 text-xs font-medium px-2">
                 <Wrench className="size-3.5 text-muted-foreground" />
-                Demo tools
+                <span className={cn(isEmbedded && "hidden md:inline")}>Demo tools</span>
                 <ChevronDown className="size-3 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
@@ -279,31 +305,33 @@ function TopBar() {
       </div>
 
       {/* 3 inline numbers: ETA to hospital, active alerts, minutes saved */}
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">ETA to AIIMS:</span>
-          <span className="tnum font-bold text-sm text-foreground">
+      <div className="flex items-center gap-3 sm:gap-5 flex-wrap">
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">ETA:</span>
+          <span className="tnum font-bold text-xs sm:text-sm text-foreground">
             {ambStatus === "arrived" ? "ARRIVED" : formatDuration(etaSec)}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs border-l pl-4">
-          <span className="text-muted-foreground">Active alerts:</span>
-          <span className={cn("tnum font-bold text-sm", activeAlertsCount > 0 ? "text-critical" : "text-foreground")}>
+        <div className="flex items-center gap-1.5 text-xs border-l pl-3">
+          <span className="text-muted-foreground">Alerts:</span>
+          <span className={cn("tnum font-bold text-xs sm:text-sm", activeAlertsCount > 0 ? "text-critical" : "text-foreground")}>
             {activeAlertsCount}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs border-l pl-4">
-          <span className="text-muted-foreground">Est. saved:</span>
-          <span className="tnum font-bold text-sm text-clear">
+        <div className="flex items-center gap-1.5 text-xs border-l pl-3">
+          <span className="text-muted-foreground">Saved:</span>
+          <span className="tnum font-bold text-xs sm:text-sm text-clear">
             {minutesSaved > 0 ? `+${minutesSaved.toFixed(1)}m` : "0m"}
           </span>
         </div>
-        <Link to="/demo">
-          <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-            <Sparkles className="size-3 text-primary" />
-            3-in-1 Demo
-          </Button>
-        </Link>
+        {!isEmbedded && (
+          <Link to="/demo">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+              <Sparkles className="size-3 text-primary" />
+              3-in-1 Demo
+            </Button>
+          </Link>
+        )}
       </div>
     </header>
   );
