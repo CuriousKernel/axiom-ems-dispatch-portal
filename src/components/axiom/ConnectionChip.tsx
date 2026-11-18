@@ -42,7 +42,7 @@ export function ConnectionChip({
     );
   return (
     <Chip tone="neutral" icon={Database}>
-      Mock data
+      Simulated data
     </Chip>
   );
 }

@@ -100,9 +100,6 @@ export default function CorridorMap({
   const esriTiles = `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${base}_Base/MapServer/tile/{z}/{y}/{x}`;
   const esriLabels = `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${base}_Reference/MapServer/tile/{z}/{y}/{x}`;
 
-  // Driver basemap: clean light CARTO Voyager tiles
-  const cartoVoyager = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-
   return (
     <MapContainer
       center={ambulance ? [ambulance.lat, ambulance.lng] : [28.605, 77.235]}
@@ -117,25 +114,13 @@ export default function CorridorMap({
       touchZoom={interactive}
       attributionControl
     >
-      {isDriver ? (
-        <TileLayer
-          key="carto-voyager"
-          url={cartoVoyager}
-          subdomains="abcd"
-          maxZoom={19}
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        />
-      ) : (
-        <>
-          <TileLayer
-            key={esriTiles}
-            url={esriTiles}
-            maxZoom={16}
-            attribution="Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
-          />
-          <TileLayer key={esriLabels} url={esriLabels} maxZoom={16} />
-        </>
-      )}
+      <TileLayer
+        key={esriTiles}
+        url={esriTiles}
+        maxZoom={18}
+        attribution="Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+      />
+      <TileLayer key={esriLabels} url={esriLabels} maxZoom={18} />
 
       {isDriver ? (
         <DriverFollowCamera
@@ -269,8 +254,13 @@ export default function CorridorMap({
             })}
             eventHandlers={onSelectJunction ? { click: () => onSelectJunction(j.id) } : {}}
           >
-            {showLabels && (
+            {showLabels && (selectedJunctionId === j.id || j.status === "CRITICAL" || j.id === "aiims") && (
               <Tooltip permanent direction="right" offset={[16, 0]} className="axm-label">
+                {j.name}
+              </Tooltip>
+            )}
+            {showLabels && !(selectedJunctionId === j.id || j.status === "CRITICAL" || j.id === "aiims") && (
+              <Tooltip direction="right" offset={[16, 0]} className="axm-label">
                 {j.name}
               </Tooltip>
             )}
