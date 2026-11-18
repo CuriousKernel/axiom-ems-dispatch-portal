@@ -43,8 +43,8 @@ export function isUnclearable(
   // 1. Marked as late alert
   if (alert.isLateAlert) return true;
 
-  // 2. Reached NOT_CLEARED state
-  if (alert.state === AlertState.NOT_CLEARED) return true;
+  // 2. Reached NOT_CLEARED or ESCALATED_FINAL state
+  if (alert.state === AlertState.NOT_CLEARED || alert.state === AlertState.ESCALATED_FINAL) return true;
 
   // 3. Officer tapped "Can't clear"
   if (alert.reason && /can'?t clear|cannot clear|refused/i.test(alert.reason)) {

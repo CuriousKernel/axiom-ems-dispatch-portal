@@ -7,9 +7,7 @@ import {
   ChevronUp,
   ExternalLink,
   Laptop,
-  Pause,
   Play,
-  RotateCcw,
   Smartphone,
   Sparkles,
   Square,
@@ -17,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/axiom/BrandMark";
 import { useSimClient } from "@/lib/use-sim-client";
+import { useSimulator } from "@/lib/simulator-engine";
+import { AlertState, isActiveAlert } from "@/lib/alerts";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/demo")({
@@ -48,9 +48,13 @@ export function DemoPage() {
 
   const { sendCommand } = useSimClient();
 
+  // Use a polling ref for the scripted demo to read live alert state
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const stopScript = () => {
     for (const t of timerRef.current) clearTimeout(t);
     timerRef.current = [];
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setScriptRunning(false);
     setScriptStep(0);
     setCaption("Demo stopped. Resetting simulation...");
@@ -60,62 +64,134 @@ export function DemoPage() {
     }, 1500);
   };
 
+  /**
+   * Event-driven scripted demo.
+   * Uses live state polling to find actual alert IDs instead of hard-coded ones.
+   * Runs at 4x speed; total ~40s real time.
+   */
   const runScriptedDemo = () => {
     for (const t of timerRef.current) clearTimeout(t);
     timerRef.current = [];
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setScriptRunning(true);
     setScriptStep(1);
+
+    // Phase tracking
+    let phase: "start" | "wait-mandi-alert" | "ack-mandi" | "clear-mandi" | "wait-ito-alert" | "watch-escalation" | "done" = "start";
+    let mandiAlertId = "";
+    let mandiOfficerId = "";
+    let itoAlertId = "";
 
     // Step 1: Start trip at 4x speed
     setCaption("Step 1/5: Starting ambulance trip at 4x speed (departing Connaught Place)...");
     sendCommand({ type: "RESTART_TRIP" });
     sendCommand({ type: "SET_SPEED", speed: 4 });
 
-    // Step 2: After 4s real time (ambulance approaching Mandi House), jam Mandi House
+    // After 3s, inject Mandi House jam
     const t1 = setTimeout(() => {
       setScriptStep(2);
-      setCaption("Step 2/5: Congestion detected at Mandi House! Dispatching alert to Officer SI Kavita Rawat...");
+      setCaption("Step 2/5: Congestion detected at Mandi House! Dispatching alert to nearest officer...");
       sendCommand({ type: "SET_DENSITY", junctionId: "mandi", density: 85 });
-    }, 4000);
+      phase = "wait-mandi-alert";
+    }, 3000);
 
-    // Step 3: After 8s real time, officer acknowledges & clears Mandi House
-    const t2 = setTimeout(() => {
-      setScriptStep(3);
-      setCaption("Step 3/5: Officer acknowledges alert, marks in position — green corridor draining lane (3x rate)...");
-      sendCommand({ type: "ACKNOWLEDGE_ALERT", alertId: "mandi-alert", officerId: "off-mandi-1" });
-      setTimeout(() => {
-        sendCommand({ type: "IN_POSITION", alertId: "mandi-alert", officerId: "off-mandi-1" });
-        setTimeout(() => {
-          sendCommand({ type: "ROAD_CLEARED", alertId: "mandi-alert", officerId: "off-mandi-1" });
-        }, 3000);
-      }, 2000);
-    }, 9000);
+    // Poll simulator state every 500ms to react to live alerts
+    pollRef.current = setInterval(() => {
+      const snap = useSimulator.getState();
+      const alerts = snap.alerts;
 
-    // Step 4: After 18s real time (approaching ITO), jam ITO and let it escalate (demonstrating timeout)
-    const t3 = setTimeout(() => {
-      setScriptStep(4);
-      setCaption("Step 4/5: Critical queue at ITO! Primary officer is engaged — observe 30s timeout countdown...");
-      sendCommand({ type: "SET_DENSITY", junctionId: "ito", density: 90 });
-    }, 17000);
+      if (phase === "wait-mandi-alert") {
+        const mandiAlert = alerts.find((a) => a.junctionId === "mandi" && a.state === AlertState.SENT);
+        if (mandiAlert) {
+          mandiAlertId = mandiAlert.id;
+          mandiOfficerId = mandiAlert.officerId;
+          phase = "ack-mandi";
+          // Wait 3s then acknowledge
+          const t = setTimeout(() => {
+            setScriptStep(3);
+            setCaption("Step 3/5: Officer acknowledges alert, moves to position — green corridor draining (3x rate)...");
+            snap.acknowledgeAlert(mandiAlertId, mandiOfficerId);
+            setTimeout(() => {
+              snap.officerInPosition(mandiAlertId, mandiOfficerId);
+              setTimeout(() => {
+                snap.officerRoadCleared(mandiAlertId, mandiOfficerId);
+                // Clear the jam so VERIFIED_CLEAR goes through
+                sendCommand({ type: "SET_DENSITY", junctionId: "mandi", density: 0 });
+                phase = "clear-mandi";
+              }, 2000);
+            }, 2000);
+          }, 3000);
+          timerRef.current.push(t);
+        }
+      }
 
-    // Step 5: After 35s real time, backup officer clears or ambulance reroutes via Ring Road
-    const t4 = setTimeout(() => {
-      setScriptStep(5);
-      setCaption("Step 5/5: Auto-escalated to backup! Corridor secured — ambulance proceeding smoothly to AIIMS.");
-    }, 32000);
+      if (phase === "clear-mandi") {
+        const mandiAlert = alerts.find((a) => a.id === mandiAlertId);
+        if (mandiAlert && mandiAlert.state === AlertState.VERIFIED_CLEAR) {
+          // Mandi cleared! Now jam ITO
+          phase = "wait-ito-alert";
+          setScriptStep(4);
+          setCaption("Step 4/5: Critical queue at ITO! Observe the 30s timeout countdown — officer doesn't respond...");
+          sendCommand({ type: "SET_DENSITY", junctionId: "ito", density: 90 });
+        }
+      }
 
-    // Done
-    const t5 = setTimeout(() => {
-      setScriptRunning(false);
-      setCaption("Demo complete! Trip arrived at AIIMS Hospital. View the Report tab for full analytics.");
-    }, 45000);
+      if (phase === "wait-ito-alert") {
+        const itoAlert = alerts.find((a) => a.junctionId === "ito" && isActiveAlert(a));
+        if (itoAlert) {
+          itoAlertId = itoAlert.id;
+          // Check if it escalated (has transitions with NO_ACK_TIMEOUT)
+          const wasEscalated = itoAlert.transitions.some((t) => t.to === AlertState.NO_ACK_TIMEOUT);
+          if (wasEscalated || itoAlert.escalatedFrom) {
+            phase = "watch-escalation";
+            setScriptStep(5);
+            setCaption("Step 5/5: Auto-escalated to backup officer! Corridor coordination in action.");
+            // After 5s, the backup officer clears
+            const t = setTimeout(() => {
+              const latestSnap = useSimulator.getState();
+              const latestIto = latestSnap.alerts.find((a) => a.id === itoAlertId);
+              if (latestIto && latestIto.state === AlertState.SENT) {
+                latestSnap.acknowledgeAlert(itoAlertId, latestIto.officerId);
+                setTimeout(() => {
+                  const s2 = useSimulator.getState();
+                  const a2 = s2.alerts.find((a) => a.id === itoAlertId);
+                  if (a2 && a2.state === AlertState.ACKNOWLEDGED) {
+                    s2.officerInPosition(itoAlertId, a2.officerId);
+                    setTimeout(() => {
+                      const s3 = useSimulator.getState();
+                      const a3 = s3.alerts.find((a) => a.id === itoAlertId);
+                      if (a3 && (a3.state === AlertState.IN_POSITION || a3.state === AlertState.CLEARING)) {
+                        s3.officerRoadCleared(itoAlertId, a3.officerId);
+                        sendCommand({ type: "SET_DENSITY", junctionId: "ito", density: 0 });
+                      }
+                    }, 2000);
+                  }
+                }, 2000);
+              }
+              phase = "done";
+            }, 4000);
+            timerRef.current.push(t);
+          }
+        }
+      }
 
-    timerRef.current = [t1, t2, t3, t4, t5];
+      // Check for arrival
+      if (snap.ambulance.status === "arrived" || phase === "done") {
+        if (phase === "done" || snap.ambulance.status === "arrived") {
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          setScriptRunning(false);
+          setCaption("Demo complete! Trip arrived at AIIMS Hospital. View the Report tab for analytics.");
+        }
+      }
+    }, 500);
+
+    timerRef.current = [t1];
   };
 
   useEffect(() => {
     return () => {
       for (const t of timerRef.current) clearTimeout(t);
+      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
