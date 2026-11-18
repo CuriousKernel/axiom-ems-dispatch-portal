@@ -1,23 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Ambulance,
   ArrowLeft,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   Laptop,
-  Maximize2,
-  MonitorDot,
-  Radio,
-  ShieldAlert,
+  Pause,
+  Play,
+  RotateCcw,
   Smartphone,
   Sparkles,
-  Users,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/axiom/BrandMark";
+import { useSimClient } from "@/lib/use-sim-client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/demo")({
@@ -41,39 +40,115 @@ export const Route = createFileRoute("/demo")({
 });
 
 export function DemoPage() {
-  const [checklistOpen, setChecklistOpen] = useState(true);
-  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [scriptRunning, setScriptRunning] = useState(false);
+  const [scriptStep, setScriptStep] = useState<number>(0);
+  const [caption, setCaption] = useState<string>("Ready for demo. Press 'Run Scripted Demo' or interact manually.");
+  const timerRef = useRef<NodeJS.Timeout[]>([]);
+
+  const { sendCommand } = useSimClient();
+
+  const stopScript = () => {
+    for (const t of timerRef.current) clearTimeout(t);
+    timerRef.current = [];
+    setScriptRunning(false);
+    setScriptStep(0);
+    setCaption("Demo stopped. Resetting simulation...");
+    sendCommand({ type: "RESTART_TRIP" });
+    setTimeout(() => {
+      setCaption("Ready for demo. Press 'Run Scripted Demo' or interact manually.");
+    }, 1500);
+  };
+
+  const runScriptedDemo = () => {
+    for (const t of timerRef.current) clearTimeout(t);
+    timerRef.current = [];
+    setScriptRunning(true);
+    setScriptStep(1);
+
+    // Step 1: Start trip at 4x speed
+    setCaption("Step 1/5: Starting ambulance trip at 4x speed (departing Connaught Place)...");
+    sendCommand({ type: "RESTART_TRIP" });
+    sendCommand({ type: "SET_SPEED", speed: 4 });
+
+    // Step 2: After 4s real time (ambulance approaching Mandi House), jam Mandi House
+    const t1 = setTimeout(() => {
+      setScriptStep(2);
+      setCaption("Step 2/5: Congestion detected at Mandi House! Dispatching alert to Officer SI Kavita Rawat...");
+      sendCommand({ type: "SET_DENSITY", junctionId: "mandi", density: 85 });
+    }, 4000);
+
+    // Step 3: After 8s real time, officer acknowledges & clears Mandi House
+    const t2 = setTimeout(() => {
+      setScriptStep(3);
+      setCaption("Step 3/5: Officer acknowledges alert, marks in position — green corridor draining lane (3x rate)...");
+      sendCommand({ type: "ACKNOWLEDGE_ALERT", alertId: "mandi-alert", officerId: "off-mandi-1" });
+      setTimeout(() => {
+        sendCommand({ type: "IN_POSITION", alertId: "mandi-alert", officerId: "off-mandi-1" });
+        setTimeout(() => {
+          sendCommand({ type: "ROAD_CLEARED", alertId: "mandi-alert", officerId: "off-mandi-1" });
+        }, 3000);
+      }, 2000);
+    }, 9000);
+
+    // Step 4: After 18s real time (approaching ITO), jam ITO and let it escalate (demonstrating timeout)
+    const t3 = setTimeout(() => {
+      setScriptStep(4);
+      setCaption("Step 4/5: Critical queue at ITO! Primary officer is engaged — observe 30s timeout countdown...");
+      sendCommand({ type: "SET_DENSITY", junctionId: "ito", density: 90 });
+    }, 17000);
+
+    // Step 5: After 35s real time, backup officer clears or ambulance reroutes via Ring Road
+    const t4 = setTimeout(() => {
+      setScriptStep(5);
+      setCaption("Step 5/5: Auto-escalated to backup! Corridor secured — ambulance proceeding smoothly to AIIMS.");
+    }, 32000);
+
+    // Done
+    const t5 = setTimeout(() => {
+      setScriptRunning(false);
+      setCaption("Demo complete! Trip arrived at AIIMS Hospital. View the Report tab for full analytics.");
+    }, 45000);
+
+    timerRef.current = [t1, t2, t3, t4, t5];
+  };
+
+  useEffect(() => {
+    return () => {
+      for (const t of timerRef.current) clearTimeout(t);
+    };
+  }, []);
 
   const checklistItems = [
     {
       step: "1",
       title: "Start Trip",
-      desc: "Tap 'Start trip' in the Control Room or on the Driver phone. Ambulance departs Connaught Place towards AIIMS.",
+      desc: "Tap 'Start trip' in Control Room or on Driver phone. Ambulance departs Connaught Place towards AIIMS.",
     },
     {
       step: "2",
       title: "Jam Mandi House",
-      desc: "In Control Room bottom panel, drag Mandi House slider to 80+ vehicles. The junction turns CRITICAL.",
+      desc: "Use Demo Tools > 'Jam Mandi House'. The junction turns CRITICAL along the path.",
     },
     {
       step: "3",
       title: "Watch Officer Phone",
-      desc: "The Officer phone instantly auto-follows to Mandi House officer, starts emergency ringing, and shows the 30s countdown ring.",
+      desc: "Officer phone auto-follows to Mandi House officer, sounds emergency siren, and shows the 30s countdown.",
     },
     {
       step: "4",
       title: "Clear Junction",
-      desc: "Tap 'Acknowledge' then 'Mark In Position' on the Officer phone. Rapid 3x corridor drainage begins and queue drops.",
+      desc: "Tap 'Acknowledge' then 'In Position' on Officer phone. 3x priority drainage begins.",
     },
     {
       step: "5",
-      title: "Test 30s Escalation",
-      desc: "Drag ITO slider to 90 vehicles and ignore it. Watch the real wall-clock countdown hit 0 and escalate to backup officer.",
+      title: "Observe Escalation",
+      desc: "Jam ITO and let countdown expire. Watch auto-escalation to the backup officer.",
     },
     {
       step: "6",
-      title: "Inspect Analytics",
-      desc: "Switch Control Room to the Analytics tab. See completed trip logs, KPI tiles, and click 'Export trips CSV'.",
+      title: "View Report",
+      desc: "Switch to Report tab. See trip logs, minutes saved, and click 'Export trips CSV'.",
     },
   ];
 
@@ -86,7 +161,7 @@ export function DemoPage() {
             <Link
               to="/"
               className="flex size-9 items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-              title="Return to role selector"
+              title="Return to home"
             >
               <ArrowLeft className="size-4" />
             </Link>
@@ -94,15 +169,37 @@ export function DemoPage() {
             <div className="h-4 w-px bg-slate-800" />
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-bold text-primary tracking-wide uppercase">
-                3-in-1 Judge Demo
+                3-in-1 Live Demo
               </span>
               <span className="hidden text-xs text-slate-400 sm:inline">
-                Single-window live synchronization via BroadcastChannel
+                Control Room · Driver · Officer
               </span>
             </div>
           </div>
 
+          {/* Scripted Demo controls */}
           <div className="flex items-center gap-2">
+            {!scriptRunning ? (
+              <Button
+                size="sm"
+                onClick={runScriptedDemo}
+                className="gap-1.5 bg-primary text-primary-foreground font-semibold text-xs shadow-md"
+              >
+                <Play className="size-3.5 fill-current" />
+                Run scripted demo
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={stopScript}
+                className="gap-1.5 font-semibold text-xs shadow-md"
+              >
+                <Square className="size-3.5 fill-current" />
+                Stop demo
+              </Button>
+            )}
+
             <Button
               variant="outline"
               size="sm"
@@ -110,7 +207,7 @@ export function DemoPage() {
               className="h-8 border-slate-700 bg-slate-800 text-xs text-slate-200 hover:bg-slate-700 hover:text-white"
             >
               <Sparkles className="mr-1.5 size-3.5 text-primary" />
-              Presenter Checklist
+              Checklist
               {checklistOpen ? (
                 <ChevronUp className="ml-1.5 size-3.5" />
               ) : (
@@ -118,6 +215,13 @@ export function DemoPage() {
               )}
             </Button>
           </div>
+        </div>
+
+        {/* Live Narration Caption Bar */}
+        <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-slate-200">
+          <span className="flex size-2 rounded-full bg-primary animate-ping shrink-0" />
+          <span className="font-semibold text-primary">LIVE NARRATION:</span>
+          <span className="font-medium text-slate-100 truncate">{caption}</span>
         </div>
 
         {/* Collapsible Presenter Walkthrough Guide */}
@@ -153,9 +257,9 @@ export function DemoPage() {
       </header>
 
       {/* ── 3-Pane Viewport Container ───────────────────────────────────────── */}
-      <main className="flex-1 p-3 flex flex-col lg:flex-row gap-4 overflow-x-auto min-h-0">
+      <main className="flex-1 p-3 flex flex-col xl:flex-row gap-4 overflow-x-auto min-h-0">
         {/* Pane 1: Control Room Dashboard (Desktop) */}
-        <section className="flex flex-col flex-1 min-w-[620px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
+        <section className="flex flex-col flex-1 min-w-[560px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-300">
             <div className="flex items-center gap-2">
               <Laptop className="size-4 text-primary" />
@@ -173,7 +277,7 @@ export function DemoPage() {
               Open in new tab <ExternalLink className="size-3" />
             </a>
           </div>
-          <div className="flex-1 min-h-[750px] bg-background">
+          <div className="flex-1 min-h-[720px] bg-background">
             <iframe
               src="/control"
               title="Control Room View"
@@ -182,8 +286,8 @@ export function DemoPage() {
           </div>
         </section>
 
-        {/* Pane 2: Ambulance Driver HUD (Mobile Frame 390x800) */}
-        <section className="flex flex-col shrink-0 w-full sm:w-[390px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
+        {/* Pane 2: Ambulance Driver HUD (Mobile Frame 380x760) */}
+        <section className="flex flex-col shrink-0 w-full sm:w-[380px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-300">
             <div className="flex items-center gap-2">
               <Ambulance className="size-4 text-primary" />
@@ -203,9 +307,7 @@ export function DemoPage() {
           </div>
 
           <div className="p-3 flex items-center justify-center bg-slate-950 flex-1">
-            {/* Realistic iPhone frame */}
-            <div className="relative h-[780px] w-[370px] rounded-[44px] border-[6px] border-slate-800 bg-black shadow-2xl overflow-hidden ring-1 ring-slate-700/50">
-              {/* Dynamic Island / speaker notch */}
+            <div className="relative h-[740px] w-[360px] rounded-[44px] border-[6px] border-slate-800 bg-black shadow-2xl overflow-hidden ring-1 ring-slate-700/50">
               <div className="absolute top-2.5 left-1/2 z-40 -translate-x-1/2 h-4 w-24 rounded-full bg-black ring-1 ring-slate-800" />
               <iframe
                 src="/driver?embed=1"
@@ -217,7 +319,7 @@ export function DemoPage() {
         </section>
 
         {/* Pane 3: Traffic Officer Phone (Mobile Frame 360x720) */}
-        <section className="flex flex-col shrink-0 w-full sm:w-[370px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
+        <section className="flex flex-col shrink-0 w-full sm:w-[360px] rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-300">
             <div className="flex items-center gap-2">
               <Smartphone className="size-4 text-primary" />
@@ -237,9 +339,7 @@ export function DemoPage() {
           </div>
 
           <div className="p-3 flex items-center justify-center bg-slate-950 flex-1">
-            {/* Realistic Android phone frame */}
-            <div className="relative h-[740px] w-[350px] rounded-[36px] border-[5px] border-slate-800 bg-black shadow-2xl overflow-hidden ring-1 ring-slate-700/50">
-              {/* Front camera punch-hole */}
+            <div className="relative h-[720px] w-[340px] rounded-[36px] border-[5px] border-slate-800 bg-black shadow-2xl overflow-hidden ring-1 ring-slate-700/50">
               <div className="absolute top-2 left-1/2 z-40 -translate-x-1/2 size-3 rounded-full bg-slate-900 ring-1 ring-slate-800" />
               <iframe
                 src="/officer?embed=1&follow=1"
