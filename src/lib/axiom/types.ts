@@ -1,4 +1,4 @@
-export type JunctionStatus = "CLEAR" | "WATCH" | "CRITICAL";
+export type JunctionStatus = "CLEAR" | "WATCH" | "CRITICAL" | "PASSED";
 
 export type AlertState =
   | "CREATED"
@@ -10,9 +10,9 @@ export type AlertState =
   | "NO_ACK_TIMEOUT"
   | "NOT_CLEARED";
 
-export type Priority = "P1" | "P2";
+export type Priority = "P1" | "P2" | "P3";
 export type QueueSourceKind = "simulator" | "vision";
-export type ConnectionState = "mock" | "live" | "reconnecting";
+export type ConnectionState = "mock" | "live" | "reconnecting" | "connecting" | "local";
 
 export interface LatLng {
   lat: number;

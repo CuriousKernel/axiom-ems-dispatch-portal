@@ -27,6 +27,8 @@ export enum AlertState {
   VERIFIED_CLEAR = "VERIFIED_CLEAR",
   NO_ACK_TIMEOUT = "NO_ACK_TIMEOUT",
   NOT_CLEARED = "NOT_CLEARED",
+  /** Terminal: no more officers available; dispatcher must call. */
+  ESCALATED_FINAL = "ESCALATED_FINAL",
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────
@@ -44,13 +46,14 @@ export const ALERT_CONFIG = {
  */
 export const LEGAL_TRANSITIONS: Readonly<Record<AlertState, readonly AlertState[]>> = {
   [AlertState.CREATED]: [AlertState.SENT],
-  [AlertState.SENT]: [AlertState.ACKNOWLEDGED, AlertState.NO_ACK_TIMEOUT],
+  [AlertState.SENT]: [AlertState.ACKNOWLEDGED, AlertState.NO_ACK_TIMEOUT, AlertState.ESCALATED_FINAL],
   [AlertState.ACKNOWLEDGED]: [AlertState.IN_POSITION, AlertState.NOT_CLEARED],
-  [AlertState.IN_POSITION]: [AlertState.CLEARING],
+  [AlertState.IN_POSITION]: [AlertState.CLEARING, AlertState.NOT_CLEARED],
   [AlertState.CLEARING]: [AlertState.VERIFIED_CLEAR, AlertState.NOT_CLEARED],
   [AlertState.VERIFIED_CLEAR]: [],
   [AlertState.NO_ACK_TIMEOUT]: [AlertState.SENT],      // re-sent after escalation
-  [AlertState.NOT_CLEARED]: [AlertState.SENT],          // re-sent after re-escalation
+  [AlertState.NOT_CLEARED]: [AlertState.SENT, AlertState.ESCALATED_FINAL],
+  [AlertState.ESCALATED_FINAL]: [],                     // terminal: no more officers
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -72,6 +75,14 @@ export interface AlertRecord {
   transitions: AlertTransition[];
   /** True when the alert fires too late for the officer to arrive. */
   isLateAlert: boolean;
+  /** Optional reason for escalation or inability to clear. */
+  reason?: string | undefined;
+  /** Seconds remaining until NO_ACK escalation (wall-clock countdown). */
+  escalatesIn?: number | undefined;
+  /** Previous officer who held this alert before it was escalated. */
+  escalatedFrom?: string | undefined;
+  /** Officer who was timed-out / unable to clear. */
+  previousOfficerId?: string | undefined;
 }
 
 // ─── State machine ────────────────────────────────────────────────────────
@@ -135,10 +146,12 @@ export function escalateNoAck(
 ): AlertRecord {
   const ts = at ?? Date.now();
   // First mark it timed-out, then re-send to the escalated officer.
-  const timedOut = transitionAlert(record, AlertState.NO_ACK_TIMEOUT, "no ack within 30 s", ts);
+  const timedOut = transitionAlert(record, AlertState.NO_ACK_TIMEOUT, "no ack within timeout", ts);
   const reSent: AlertRecord = {
     ...timedOut,
     officerId: nextOfficerId,
+    escalatedFrom: record.officerId,
+    previousOfficerId: record.officerId,
   };
   return transitionAlert(reSent, AlertState.SENT, `escalated to officer ${nextOfficerId}`, ts);
 }
@@ -157,6 +170,23 @@ export function escalateNotCleared(
   const reSent: AlertRecord = {
     ...notCleared,
     officerId: nextOfficerId,
+    escalatedFrom: record.officerId,
+    previousOfficerId: record.officerId,
   };
   return transitionAlert(reSent, AlertState.SENT, `re-escalated to officer ${nextOfficerId}`, ts);
+}
+
+
+/**
+ * Returns true if the alert is in a terminal state (no further actions expected).
+ */
+export function isTerminalAlert(a: AlertRecord): boolean {
+  return a.state === AlertState.VERIFIED_CLEAR || a.state === AlertState.ESCALATED_FINAL;
+}
+
+/**
+ * Returns true if the alert is "active" (needs attention / in progress).
+ */
+export function isActiveAlert(a: AlertRecord): boolean {
+  return !isTerminalAlert(a);
 }

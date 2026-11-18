@@ -1,9 +1,14 @@
 import type { Junction, JunctionStatus, LatLng, Officer } from "@/lib/axiom/types";
 
+export interface AmbulanceMarkerData extends LatLng {
+  heading?: number | undefined;
+}
+
 export interface CorridorMapProps {
+  variant?: "control" | "driver" | undefined;
   junctions: (Junction & { status: JunctionStatus })[];
   officers?: Officer[] | undefined;
-  ambulance?: LatLng | null | undefined;
+  ambulance?: AmbulanceMarkerData | null | undefined;
   /** Path already traveled (green) and path ahead (gray). */
   traveled?: LatLng[] | undefined;
   ahead?: LatLng[] | undefined;
@@ -15,4 +20,7 @@ export interface CorridorMapProps {
   focus?: LatLng[] | undefined;
   interactive?: boolean | undefined;
   className?: string | undefined;
+  /** Driver mode camera follow callbacks */
+  onUserDragAway?: () => void;
+  recenterTrigger?: number | undefined;
 }

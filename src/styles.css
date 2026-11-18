@@ -253,6 +253,10 @@
 .axm-junction--critical {
   background: var(--critical);
 }
+.axm-junction--passed {
+  background: var(--muted-foreground);
+  opacity: 0.5;
+}
 .axm-junction--selected {
   outline: 3px solid var(--ring);
   outline-offset: 2px;
@@ -310,3 +314,95 @@
   stroke: var(--clear);
   stroke-opacity: 0.9;
 }
+
+/* ---------- Driver Map Variant (Uber/Ola/Rapido navigation styling) ---------- */
+.axm-path-driver-casing {
+  stroke: #ffffff;
+  stroke-opacity: 0.95;
+}
+.axm-path-driver-ahead {
+  stroke: #2563eb;
+  stroke-opacity: 1;
+}
+.axm-path-driver-traveled {
+  stroke: #94a3b8;
+  stroke-opacity: 0.55;
+}
+
+.axm-driver-marker-wrap {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.axm-driver-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: rgba(37, 99, 235, 0.25);
+  animation: axm-pulse 1.8s ease-out infinite;
+}
+.axm-driver-arrow {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.axm-driver-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+}
+.axm-driver-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+.axm-driver-pill-dot--clear {
+  background: #16a34a;
+}
+.axm-driver-pill-dot--watch {
+  background: #d97706;
+}
+.axm-driver-pill-dot--critical {
+  background: #dc2626;
+  box-shadow: 0 0 6px #dc2626;
+}
+.axm-driver-pill-dot--passed {
+  background: #94a3b8;
+}
+
+.axm-driver-hospital-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #dc2626;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
