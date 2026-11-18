@@ -5,18 +5,16 @@ import {
   Circle,
   CircleCheck,
   Clock,
+  Play,
   ScrollText,
-  Smartphone,
   UserCheck,
   UserRound,
-  Users,
   VideoOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ClearTimeChart } from "@/components/axiom/ClearTimeChart";
 import { EmptyState } from "@/components/axiom/EmptyState";
 import { MapFrame } from "@/components/axiom/MapFrame";
-import { SimulatorPanel } from "@/components/axiom/SimulatorPanel";
 import { Chip, StatusChip } from "@/components/axiom/StatusChip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,13 +42,13 @@ export const Route = createFileRoute("/control/")({
 });
 
 function LivePage() {
-  const dark = useAxiom((s) => s.controlDark);
   const selected = useAxiom((s) => s.selectedJunctionId);
   const select = useAxiom((s) => s.selectJunction);
 
   const ambulance = useSimulator((s) => s.ambulance);
   const readings = useSimulator((s) => s.readings);
   const activeRouteId = useSimulator((s) => s.activeRouteId);
+  const startTrip = useSimulator((s) => s.startTrip);
 
   // Compute live junctions with dynamic status
   const liveJunctions = useMemo(() => {
@@ -98,9 +96,30 @@ function LivePage() {
         </div>
       )}
 
-      {/* Corridor Map and Live Panels */}
-      <div className="grid grid-cols-[65fr_35fr] gap-4">
-        <Card className="relative min-h-[600px] overflow-hidden rounded-lg p-0 shadow-none">
+      {/* When idle: friendly prompt banner */}
+      {ambulance.status === "idle" && (
+        <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary-soft/40 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-xs">
+              1
+            </span>
+            <div>
+              <p className="text-sm font-bold text-foreground">Ambulance ready at Connaught Place</p>
+              <p className="text-xs text-muted-foreground">
+                Press "Start trip" above or below to begin corridor simulation.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" onClick={startTrip} className="gap-1.5 text-xs font-semibold">
+            <Play className="size-3.5" />
+            Start trip
+          </Button>
+        </div>
+      )}
+
+      {/* Main 2-column layout: Big Map Left, Alert/Junction Right */}
+      <div className="grid grid-cols-[60fr_40fr] gap-4">
+        <Card className="relative min-h-[640px] overflow-hidden rounded-lg p-0 shadow-none">
           <MapFrame
             className="absolute inset-0"
             junctions={liveJunctions}
@@ -114,7 +133,7 @@ function LivePage() {
             ahead={ahead}
             selectedJunctionId={selected}
             onSelectJunction={select}
-            dark={dark}
+            dark={false}
           />
           <MapLegend />
         </Card>
@@ -125,16 +144,11 @@ function LivePage() {
         </div>
       </div>
 
-      {/* Simulator controls */}
-      <SimulatorPanel />
-
-      {/* Officer Roster & Live Officer Phone Preview Side-by-Side */}
-      <div className="grid grid-cols-[1fr_390px] gap-4">
+      {/* Officer Roster & Event Log */}
+      <div className="grid grid-cols-[1fr_1fr] gap-4">
         <OfficerRoster />
-        <OfficerPhonePreview />
+        <EventLog />
       </div>
-
-      <EventLog />
     </>
   );
 }
@@ -149,7 +163,7 @@ function MapLegend() {
       <span className="ml-1 inline-flex items-center gap-1.5 text-muted-foreground">
         <span className="axm-officer inline-block" /> Officer
       </span>
-      <span className="text-muted-foreground">OSRM Road corridor (Connaught Place → AIIMS)</span>
+      <span className="text-muted-foreground">Connaught Place → AIIMS</span>
     </div>
   );
 }
@@ -167,12 +181,12 @@ function AlertQueue() {
   return (
     <Card className="rounded-lg shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
-        <CardTitle className="text-base font-semibold">Alert queue</CardTitle>
+        <CardTitle className="text-base font-semibold">Active Alerts</CardTitle>
         <span className="tnum text-xs font-semibold text-muted-foreground">{alerts.length} active</span>
       </CardHeader>
       <CardContent className="px-2 pb-2">
         {alerts.length === 0 ? (
-          <EmptyState icon={BellOff} title="No active alerts" body="Alerts appear when a junction turns critical." />
+          <EmptyState icon={BellOff} title="No active alerts" body="Alerts appear when a junction turns critical along the route." />
         ) : (
           <ul className="flex flex-col gap-2">
             {visible.map((a) => {
@@ -180,6 +194,14 @@ function AlertQueue() {
               const o = officerById(a.officerId);
               const reading = readings[a.junctionId];
               if (!j) return null;
+
+              // Readable step name
+              let stepName = "Alert Sent";
+              if (a.state === AlertState.ACKNOWLEDGED) stepName = "Acknowledged";
+              else if (a.state === AlertState.IN_POSITION) stepName = "In Position (Draining)";
+              else if (a.state === AlertState.CLEARING) stepName = "Clearing (Verifying)";
+              else if (a.state === AlertState.VERIFIED_CLEAR) stepName = "Verified Clear";
+              else if (a.state === AlertState.NOT_CLEARED) stepName = "Escalated";
 
               // Escalation chain: [First Officer] -> [Second Officer] -> Duty Inspector
               const chain: { id: string; name: string; isCurrent: boolean }[] = [];
@@ -207,7 +229,7 @@ function AlertQueue() {
                 <li
                   key={a.id}
                   className={cn(
-                    "rounded-lg border p-3 transition-colors",
+                    "rounded-lg border p-3 transition-colors cursor-pointer",
                     select === a.junctionId ? "bg-muted/60 border-primary/40" : "bg-card hover:bg-muted/30",
                   )}
                   onClick={() => selectJunction(a.junctionId)}
@@ -216,15 +238,17 @@ function AlertQueue() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <StatusChip status={reading?.status ?? "CRITICAL"} size="sm" />
-                        <span className="font-bold text-sm">{j.name}</span>
+                        <span className="font-bold text-sm">
+                          {j.name} → {o ? `${o.rank} ${o.name}` : formatOfficerName(a.officerId)}
+                        </span>
                         {a.isLateAlert && (
                           <span className="rounded bg-critical-soft px-1.5 py-0.2 text-[10px] font-bold text-critical-ink">
                             LATE ALERT
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-xs font-semibold text-foreground">
-                        → {o ? `${o.rank} ${o.name}` : formatOfficerName(a.officerId)} ({j.name})
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Step: <strong className="text-foreground">{stepName}</strong>
                       </p>
                     </div>
 
@@ -382,34 +406,6 @@ function OfficerRoster() {
               </div>
             );
           })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function OfficerPhonePreview() {
-  return (
-    <Card className="rounded-lg shadow-none">
-      <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-base font-semibold">
-            <Smartphone className="size-4 text-muted-foreground" aria-hidden />
-            Officer Phone Preview
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">Live mirror of mobile view (/officer)</p>
-        </div>
-        <span className="rounded bg-primary-soft px-2 py-0.5 text-[11px] font-bold text-primary">
-          Live Sync
-        </span>
-      </CardHeader>
-      <CardContent className="flex justify-center p-3">
-        <div className="relative h-[680px] w-[350px] overflow-hidden rounded-[36px] border-[6px] border-border bg-background shadow-2xl">
-          <iframe
-            src="/officer?embed=1&follow=1"
-            title="Officer Phone View"
-            className="h-full w-full border-none"
-          />
         </div>
       </CardContent>
     </Card>

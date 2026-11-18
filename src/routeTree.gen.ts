@@ -16,8 +16,6 @@ import { Route as DriverRouteImport } from './routes/driver'
 import { Route as OfficerRouteImport } from './routes/officer'
 import { Route as ControlIndexRouteImport } from './routes/control.index'
 import { Route as ControlAnalyticsRouteImport } from './routes/control.analytics'
-import { Route as ControlJunctionsRouteImport } from './routes/control.junctions'
-import { Route as ControlOfficersRouteImport } from './routes/control.officers'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -54,16 +52,6 @@ const ControlAnalyticsRoute = ControlAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => ControlRoute,
 } as any)
-const ControlJunctionsRoute = ControlJunctionsRouteImport.update({
-  id: '/junctions',
-  path: '/junctions',
-  getParentRoute: () => ControlRoute,
-} as any)
-const ControlOfficersRoute = ControlOfficersRouteImport.update({
-  id: '/officers',
-  path: '/officers',
-  getParentRoute: () => ControlRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -72,8 +60,6 @@ export interface FileRoutesByFullPath {
   '/driver': typeof DriverRoute
   '/officer': typeof OfficerRoute
   '/control/analytics': typeof ControlAnalyticsRoute
-  '/control/junctions': typeof ControlJunctionsRoute
-  '/control/officers': typeof ControlOfficersRoute
   '/control/': typeof ControlIndexRoute
 }
 export interface FileRoutesByTo {
@@ -82,8 +68,6 @@ export interface FileRoutesByTo {
   '/driver': typeof DriverRoute
   '/officer': typeof OfficerRoute
   '/control/analytics': typeof ControlAnalyticsRoute
-  '/control/junctions': typeof ControlJunctionsRoute
-  '/control/officers': typeof ControlOfficersRoute
   '/control': typeof ControlIndexRoute
 }
 export interface FileRoutesById {
@@ -94,8 +78,6 @@ export interface FileRoutesById {
   '/driver': typeof DriverRoute
   '/officer': typeof OfficerRoute
   '/control/analytics': typeof ControlAnalyticsRoute
-  '/control/junctions': typeof ControlJunctionsRoute
-  '/control/officers': typeof ControlOfficersRoute
   '/control/': typeof ControlIndexRoute
 }
 export interface FileRouteTypes {
@@ -107,19 +89,9 @@ export interface FileRouteTypes {
     | '/driver'
     | '/officer'
     | '/control/analytics'
-    | '/control/junctions'
-    | '/control/officers'
     | '/control/'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/demo'
-    | '/driver'
-    | '/officer'
-    | '/control/analytics'
-    | '/control/junctions'
-    | '/control/officers'
-    | '/control'
+  to: '/' | '/demo' | '/driver' | '/officer' | '/control/analytics' | '/control'
   id:
     | '__root__'
     | '/'
@@ -128,8 +100,6 @@ export interface FileRouteTypes {
     | '/driver'
     | '/officer'
     | '/control/analytics'
-    | '/control/junctions'
-    | '/control/officers'
     | '/control/'
   fileRoutesById: FileRoutesById
 }
@@ -192,34 +162,16 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ControlAnalyticsRouteImport
       parentRoute: typeof ControlRoute
     }
-    '/control/junctions': {
-      id: '/control/junctions'
-      path: '/junctions'
-      fullPath: '/control/junctions'
-      preLoaderRoute: typeof ControlJunctionsRouteImport
-      parentRoute: typeof ControlRoute
-    }
-    '/control/officers': {
-      id: '/control/officers'
-      path: '/officers'
-      fullPath: '/control/officers'
-      preLoaderRoute: typeof ControlOfficersRouteImport
-      parentRoute: typeof ControlRoute
-    }
   }
 }
 
 interface ControlRouteChildren {
   ControlAnalyticsRoute: typeof ControlAnalyticsRoute
-  ControlJunctionsRoute: typeof ControlJunctionsRoute
-  ControlOfficersRoute: typeof ControlOfficersRoute
   ControlIndexRoute: typeof ControlIndexRoute
 }
 
 const ControlRouteChildren: ControlRouteChildren = {
   ControlAnalyticsRoute: ControlAnalyticsRoute,
-  ControlJunctionsRoute: ControlJunctionsRoute,
-  ControlOfficersRoute: ControlOfficersRoute,
   ControlIndexRoute: ControlIndexRoute,
 }
 
