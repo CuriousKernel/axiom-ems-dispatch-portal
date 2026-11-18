@@ -27,6 +27,8 @@ export enum AlertState {
   VERIFIED_CLEAR = "VERIFIED_CLEAR",
   NO_ACK_TIMEOUT = "NO_ACK_TIMEOUT",
   NOT_CLEARED = "NOT_CLEARED",
+  /** Terminal: no more officers available; dispatcher must call. */
+  ESCALATED_FINAL = "ESCALATED_FINAL",
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────
@@ -44,13 +46,14 @@ export const ALERT_CONFIG = {
  */
 export const LEGAL_TRANSITIONS: Readonly<Record<AlertState, readonly AlertState[]>> = {
   [AlertState.CREATED]: [AlertState.SENT],
-  [AlertState.SENT]: [AlertState.ACKNOWLEDGED, AlertState.NO_ACK_TIMEOUT],
+  [AlertState.SENT]: [AlertState.ACKNOWLEDGED, AlertState.NO_ACK_TIMEOUT, AlertState.ESCALATED_FINAL],
   [AlertState.ACKNOWLEDGED]: [AlertState.IN_POSITION, AlertState.NOT_CLEARED],
   [AlertState.IN_POSITION]: [AlertState.CLEARING, AlertState.NOT_CLEARED],
   [AlertState.CLEARING]: [AlertState.VERIFIED_CLEAR, AlertState.NOT_CLEARED],
   [AlertState.VERIFIED_CLEAR]: [],
   [AlertState.NO_ACK_TIMEOUT]: [AlertState.SENT],      // re-sent after escalation
-  [AlertState.NOT_CLEARED]: [AlertState.SENT],          // re-sent after re-escalation
+  [AlertState.NOT_CLEARED]: [AlertState.SENT, AlertState.ESCALATED_FINAL],
+  [AlertState.ESCALATED_FINAL]: [],                     // terminal: no more officers
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -171,4 +174,19 @@ export function escalateNotCleared(
     previousOfficerId: record.officerId,
   };
   return transitionAlert(reSent, AlertState.SENT, `re-escalated to officer ${nextOfficerId}`, ts);
+}
+
+
+/**
+ * Returns true if the alert is in a terminal state (no further actions expected).
+ */
+export function isTerminalAlert(a: AlertRecord): boolean {
+  return a.state === AlertState.VERIFIED_CLEAR || a.state === AlertState.ESCALATED_FINAL;
+}
+
+/**
+ * Returns true if the alert is "active" (needs attention / in progress).
+ */
+export function isActiveAlert(a: AlertRecord): boolean {
+  return !isTerminalAlert(a);
 }

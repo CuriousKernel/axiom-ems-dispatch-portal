@@ -31,6 +31,7 @@ import { useTripRecorder } from "@/lib/use-trip-recorder";
 import { formatDuration } from "@/lib/axiom/format";
 import { calculateMinutesSaved } from "@/lib/analytics-store";
 import { HOSPITAL_ID, JUNCTIONS } from "@/lib/axiom/seed";
+import { isActiveAlert } from "@/lib/alerts";
 import type { SimSpeed } from "@/lib/sim-transport";
 import { cn } from "@/lib/utils";
 
@@ -125,7 +126,7 @@ function TopBar() {
   // Compute 3 key inline indicators
   const hospitalReading = readings[HOSPITAL_ID];
   const etaSec = hospitalReading?.eta ?? 0;
-  const activeAlertsCount = alerts.filter((a) => a.state !== "VERIFIED_CLEAR").length;
+  const activeAlertsCount = alerts.filter(isActiveAlert).length;
   const clearedCount = Object.values(readings).filter((r) => r.status === "PASSED" || r.status === "CLEAR").length;
   const minutesSaved = calculateMinutesSaved(clearedCount, alerts.length, distanceMeters / 15);
 

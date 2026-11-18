@@ -24,7 +24,7 @@ import {
   officerById,
 } from "@/lib/axiom/seed";
 import { useSimClient } from "@/lib/use-sim-client";
-import { AlertState, type AlertRecord } from "@/lib/alerts";
+import { AlertState, isActiveAlert, type AlertRecord } from "@/lib/alerts";
 import { formatOfficerName } from "@/lib/simulator-engine";
 import { cn } from "@/lib/utils";
 
@@ -115,7 +115,7 @@ function OfficerView() {
   const { state, connectionState, isStale, sendCommand } = useSimClient();
 
   // Find most recent active alert across corridor
-  const activeCorridorAlert = state.alerts.find((a) => a.state !== AlertState.VERIFIED_CLEAR);
+  const activeCorridorAlert = state.alerts.find((a) => isActiveAlert(a));
 
   // Auto-follow: if enabled and an alert is active, automatically select that officer!
   useEffect(() => {
@@ -129,7 +129,7 @@ function OfficerView() {
 
   // Active alert currently assigned to this officer
   const myActiveAlert = state.alerts.find(
-    (a) => a.officerId === officer.id && a.state !== AlertState.VERIFIED_CLEAR,
+    (a) => a.officerId === officer.id && isActiveAlert(a),
   );
 
   // Escalated alert previously assigned to this officer (timed-out or couldn't clear)
@@ -137,7 +137,7 @@ function OfficerView() {
     (a) =>
       (a.previousOfficerId === officer.id || a.escalatedFrom === officer.id) &&
       a.officerId !== officer.id &&
-      a.state !== AlertState.VERIFIED_CLEAR,
+      a.state !== AlertState.VERIFIED_CLEAR && a.state !== AlertState.ESCALATED_FINAL,
   );
 
   // Vibration & sound on alert arrival

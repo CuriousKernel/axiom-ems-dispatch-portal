@@ -50,6 +50,13 @@ export function useSimClient() {
     const connListener = (s: SupabaseConnectionState) => setConnectionState(s);
     _connStateListeners.add(connListener);
 
+    // Immediately check if host is running in this tab (fixes "Connecting" flash)
+    const hostRunning = useSimulator.getState()._tickHandle !== null;
+    if (hostRunning) {
+      setConnectionState("live");
+      setIsStale(false);
+    }
+
     // Heartbeat: if no state received in 3s and host isn't local, flag stale / reconnecting
     const heartbeatInterval = setInterval(() => {
       const hostRunning = useSimulator.getState()._tickHandle !== null;

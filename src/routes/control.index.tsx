@@ -22,7 +22,7 @@ import { formatDuration, formatSimTime } from "@/lib/axiom/format";
 import { JUNCTIONS, OFFICERS, junctionById, officerById, officersAt, readingFor } from "@/lib/axiom/seed";
 import { useAxiom } from "@/lib/axiom/store";
 import { useSimulator, formatOfficerName } from "@/lib/simulator-engine";
-import { AlertState } from "@/lib/alerts";
+import { AlertState, isActiveAlert } from "@/lib/alerts";
 import { PRIMARY_ROUTE, ALT_ROUTE, routeIsSynthetic } from "@/lib/route-data";
 import type { JunctionStatus, LatLng } from "@/lib/axiom/types";
 import { cn } from "@/lib/utils";
@@ -176,16 +176,17 @@ function AlertQueue() {
   const alerts = useSimulator((s) => s.alerts);
   const readings = useSimulator((s) => s.readings);
   const acknowledgeAlert = useSimulator((s) => s.acknowledgeAlert);
-  const visible = showAll ? alerts : alerts.slice(0, 5);
+  const activeAlerts = alerts.filter(isActiveAlert);
+  const visible = showAll ? activeAlerts : activeAlerts.slice(0, 5);
 
   return (
     <Card className="rounded-lg shadow-none">
       <CardHeader className="flex-row items-center justify-between space-y-0 px-4 pb-2 pt-4">
         <CardTitle className="text-base font-semibold">Active Alerts</CardTitle>
-        <span className="tnum text-xs font-semibold text-muted-foreground">{alerts.length} active</span>
+        <span className="tnum text-xs font-semibold text-muted-foreground">{activeAlerts.length} active</span>
       </CardHeader>
       <CardContent className="px-2 pb-2">
-        {alerts.length === 0 ? (
+        {activeAlerts.length === 0 ? (
           <EmptyState icon={BellOff} title="No active alerts" body="Alerts appear when a junction turns critical along the route." />
         ) : (
           <ul className="flex flex-col gap-2">
@@ -202,6 +203,7 @@ function AlertQueue() {
               else if (a.state === AlertState.CLEARING) stepName = "Clearing (Verifying)";
               else if (a.state === AlertState.VERIFIED_CLEAR) stepName = "Verified Clear";
               else if (a.state === AlertState.NOT_CLEARED) stepName = "Escalated";
+              else if (a.state === AlertState.ESCALATED_FINAL) stepName = "No Officers — Call Required";
 
               // Escalation chain: [First Officer] -> [Second Officer] -> Duty Inspector
               const chain: { id: string; name: string; isCurrent: boolean }[] = [];
@@ -320,7 +322,7 @@ function AlertQueue() {
             })}
           </ul>
         )}
-        {alerts.length > 5 && !showAll && (
+        {activeAlerts.length > 5 && !showAll && (
           <Button variant="ghost" size="sm" className="w-full mt-2" onClick={() => setShowAll(true)}>
             View all
           </Button>
@@ -350,13 +352,13 @@ function OfficerRoster() {
           {OFFICERS.map((o) => {
             const j = junctionById(o.junctionId);
             const activeAlert = alerts.find(
-              (a) => a.officerId === o.id && a.state !== AlertState.VERIFIED_CLEAR,
+              (a) => a.officerId === o.id && isActiveAlert(a),
             );
             const timedOutAlert = alerts.find(
               (a) =>
                 a.previousOfficerId === o.id &&
                 a.officerId !== o.id &&
-                a.state !== AlertState.VERIFIED_CLEAR,
+                isActiveAlert(a),
             );
 
             // Status badge logic: STANDBY / ALERTED / ACKNOWLEDGED / IN POSITION / NO RESPONSE / ESCALATED

@@ -23,16 +23,26 @@ import { CRITICALITY_CONFIG } from "../criticality";
 
 /** Reset store state between tests by calling stopEngine and replacing state. */
 function resetEngine() {
-  const { stopEngine } = useSimulator.getState();
-  stopEngine();
-  useSimulator.setState({
+  const s = useSimulator.getState();
+  s.stopEngine();
+  // Reset source densities to 0 for all junctions
+  for (const jId of ["cp", "mandi", "ito", "pragati", "ashram", "aiims"]) {
+    s.source.setDensity(jId, 0);
+  }
+  useSimulator.setState((prev) => ({
+    simTimeSeconds: 0,
     readings: {},
     confirmedStatuses: {},
     hysteresis: {},
     alerts: [],
     events: [],
+    sentAtSimTime: {},
+    alertElapsedWallSeconds: {},
+    verifications: {},
     _tickHandle: null,
-  });
+    paused: true, // paused so ticks compute but ambulance doesn't move
+    ambulance: { ...prev.ambulance, status: "running" as const, distanceMeters: 0, speedKmh: 0, smoothedSpeedKmh: 55 },
+  }));
 }
 
 // ─── GAP 1: LATE_ALERT routing ────────────────────────────────────────────

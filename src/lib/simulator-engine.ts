@@ -31,6 +31,8 @@ import {
   escalateNotCleared,
   AlertState,
   ALERT_CONFIG,
+  isActiveAlert,
+  isTerminalAlert,
 } from "@/lib/alerts";
 import type { AlertRecord } from "@/lib/alerts";
 import { findNearestOfficer } from "@/lib/assignment";
@@ -99,6 +101,24 @@ export function formatOfficerName(officerId: string): string {
 export function formatJunctionName(junctionId: string): string {
   const j = JUNCTIONS.find((x) => x.id === junctionId);
   return j ? j.name : junctionId;
+}
+
+/**
+ * Find the next officer for a junction-specific escalation.
+ * Filters by junction assignment first, then falls back to "control-room".
+ * Returns "control-room" when no eligible junction-local officer remains.
+ */
+function findNextOfficerForJunction(
+  junctionId: string,
+  excludeIds: readonly string[],
+): string {
+  const j = JUNCTIONS.find((x) => x.id === junctionId);
+  if (!j) return "control-room";
+
+  // Only consider officers assigned to THIS junction
+  const junctionOfficers = OFFICERS.filter((o) => o.junctionId === junctionId);
+  const result = findNearestOfficer(junctionOfficers, { lat: j.lat, lng: j.lng }, excludeIds);
+  return result.kind === "assigned" ? result.officer.id : "control-room";
 }
 
 // ─── Store Interface ──────────────────────────────────────────────────────
@@ -534,9 +554,33 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         const targetAlert = s.alerts.find((a) => a.id === alertId);
         if (!targetAlert) return s;
 
-        const j = JUNCTIONS.find((x) => x.id === targetAlert.junctionId);
-        const nextOfficer = findNearestOfficer(OFFICERS, j ? { lat: j.lat, lng: j.lng } : { lat: 0, lng: 0 }, [officerId]);
-        const nextId = nextOfficer.kind === "assigned" ? nextOfficer.officer.id : "control-room";
+        const nextId = findNextOfficerForJunction(targetAlert.junctionId, [officerId]);
+        const jName = formatJunctionName(targetAlert.junctionId);
+        const officerName = formatOfficerName(officerId);
+
+        // If nextId is "control-room" and the alert has ALREADY been to control-room
+        // or the previous holder was control-room, escalation is FINAL.
+        const alreadyAtControlRoom = targetAlert.officerId === "control-room" || targetAlert.escalatedFrom === "control-room";
+        if (nextId === "control-room" && alreadyAtControlRoom) {
+          const finalAlert = transitionAlert(
+            transitionAlert(targetAlert, AlertState.NOT_CLEARED, "queue still high", Date.now()),
+            AlertState.ESCALATED_FINAL,
+            "No more officers available — dispatcher must call",
+            Date.now(),
+          );
+          return {
+            alerts: s.alerts.map((a) => (a.id === alertId ? finalAlert : a)),
+            events: [
+              {
+                id: nextEventId(),
+                at: s.simTimeSeconds,
+                type: "alert",
+                message: `No reachable officer at ${jName}. Dispatcher must call.`,
+              },
+              ...s.events,
+            ],
+          };
+        }
 
         let escalated = escalateNotCleared(targetAlert, nextId, Date.now());
         escalated = {
@@ -548,9 +592,7 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         };
 
         const updated = s.alerts.map((a) => (a.id === alertId ? escalated : a));
-        const officerName = formatOfficerName(officerId);
         const nextOfficerName = formatOfficerName(nextId);
-        const jName = formatJunctionName(targetAlert.junctionId);
 
         return {
           alerts: updated,
@@ -644,19 +686,29 @@ export const useSimulator = create<SimEngineState>((set, get) => {
           eta = 0;
           clearTime = 0;
         } else {
-          eta = computeEtaSeconds(nextAmb, Math.max(0, distRemaining));
+          const rawEta = computeEtaSeconds(nextAmb, Math.max(0, distRemaining));
+          eta = rawEta;
           const prevConfirmed = state.confirmedStatuses[j.id] ?? null;
 
           const critResult = computeCriticality(
             {
               junctionId: j.id,
               queueCount: queueReading.vehicleCount,
-              eta,
+              eta: rawEta, // use raw eta for criticality decisions
               dischargeRate: j.dischargeRate,
               officerTravelTime: 20,
             },
             prevConfirmed === "PASSED" ? null : prevConfirmed,
           );
+
+          // P5 fix: clamp ETA change to ±5s per tick for DISPLAY only
+          const prevEta = state.readings[j.id]?.eta;
+          if (prevEta !== undefined && prevEta > 0 && rawEta > 0) {
+            const diff = rawEta - prevEta;
+            if (Math.abs(diff) > 5) {
+              eta = prevEta + Math.sign(diff) * 5;
+            }
+          }
 
           status = critResult.status;
           clearTime = critResult.clearTime < Number.MAX_SAFE_INTEGER ? critResult.clearTime : 9999;
@@ -670,14 +722,13 @@ export const useSimulator = create<SimEngineState>((set, get) => {
           nextHysteresis[j.id] = nextHyst;
           nextConfirmedStatuses[j.id] = nextHyst.confirmedStatus ?? status;
 
-          // Alert creation on genuine CRITICAL transition
-          if (critResult.isNewCritical) {
+          // Alert creation on genuine CRITICAL transition (P1 fix: only when ambulance is running)
+          if (critResult.isNewCritical && state.ambulance.status === "running") {
             let officerId: string;
             if (critResult.isLateAlert) {
               officerId = "control-room";
             } else {
-              const assigned = findNearestOfficer(OFFICERS, { lat: j.lat, lng: j.lng });
-              officerId = assigned.kind === "assigned" ? assigned.officer.id : "control-room";
+              officerId = findNextOfficerForJunction(j.id, []);
             }
 
             const alert = createAlert({
@@ -771,24 +822,37 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         else if (verif.totalVerificationTicks >= 2 && !isClearNow) {
           const targetAlert = currentAlerts.find((a) => a.id === alertId);
           if (targetAlert && (targetAlert.state === AlertState.CLEARING || targetAlert.state === AlertState.IN_POSITION)) {
-            const j = JUNCTIONS.find((x) => x.id === verif.junctionId);
-            const nextOfficer = findNearestOfficer(
-              OFFICERS,
-              j ? { lat: j.lat, lng: j.lng } : { lat: 0, lng: 0 },
-              [targetAlert.officerId],
-            );
-            const nextId = nextOfficer.kind === "assigned" ? nextOfficer.officer.id : "control-room";
+            const nextId = findNextOfficerForJunction(verif.junctionId, [targetAlert.officerId]);
 
-            const escalated = escalateNotCleared(targetAlert, nextId, Date.now());
-            currentAlerts = currentAlerts.map((a) => (a.id === alertId ? escalated : a));
-            nextSentAt[alertId] = nextSimTime;
+            // Check if escalation should be FINAL
+            const alreadyAtControlRoom = targetAlert.officerId === "control-room" || targetAlert.escalatedFrom === "control-room";
+            if (nextId === "control-room" && alreadyAtControlRoom) {
+              const finalAlert = transitionAlert(
+                transitionAlert(targetAlert, AlertState.NOT_CLEARED, "queue still high", Date.now()),
+                AlertState.ESCALATED_FINAL,
+                "No more officers available — dispatcher must call",
+                Date.now(),
+              );
+              currentAlerts = currentAlerts.map((a) => (a.id === alertId ? finalAlert : a));
+              verificationEvents.push({
+                id: nextEventId(),
+                at: nextSimTime,
+                type: "alert",
+                message: `No reachable officer at ${jName}. Dispatcher must call.`,
+              });
+            } else {
+              const escalated = escalateNotCleared(targetAlert, nextId, Date.now());
+              currentAlerts = currentAlerts.map((a) => (a.id === alertId ? escalated : a));
+              nextSentAt[alertId] = nextSimTime;
+              nextAlertWallElapsed[alertId] = 0;
 
-            verificationEvents.push({
-              id: nextEventId(),
-              at: nextSimTime,
-              type: "alert",
-              message: `Junction ${jName} NOT CLEARED (queue still high). Re-escalated to officer ${nextId}.`,
-            });
+              verificationEvents.push({
+                id: nextEventId(),
+                at: nextSimTime,
+                type: "alert",
+                message: `Junction ${jName} NOT CLEARED (queue still high). Re-escalated to ${formatOfficerName(nextId)}.`,
+              });
+            }
           }
           delete nextVerifications[alertId];
         }
@@ -805,13 +869,26 @@ export const useSimulator = create<SimEngineState>((set, get) => {
         a = { ...a, escalatesIn };
 
         if (currentWall >= state.alertTimeoutSeconds) {
-          const j = JUNCTIONS.find((x) => x.id === a.junctionId);
-          const nextOfficer = findNearestOfficer(
-            OFFICERS,
-            j ? { lat: j.lat, lng: j.lng } : { lat: 0, lng: 0 },
-            [a.officerId, ...(a.previousOfficerId ? [a.previousOfficerId] : [])],
-          );
-          const nextId = nextOfficer.kind === "assigned" ? nextOfficer.officer.id : "control-room";
+          const excludeIds = [a.officerId, ...(a.previousOfficerId ? [a.previousOfficerId] : [])];
+          const nextId = findNextOfficerForJunction(a.junctionId, excludeIds);
+
+          // Check if escalation should be FINAL (already exhausted all junction officers + control-room)
+          const alreadyAtControlRoom = a.officerId === "control-room" || a.escalatedFrom === "control-room";
+          if (nextId === "control-room" && alreadyAtControlRoom) {
+            const jName = formatJunctionName(a.junctionId);
+            try {
+              const finalAlert = transitionAlert(a, AlertState.ESCALATED_FINAL, "No more officers — dispatcher must call", Date.now());
+              timeoutEvents.push({
+                id: nextEventId(),
+                at: nextSimTime,
+                type: "alert",
+                message: `No reachable officer at ${jName}. Dispatcher must call.`,
+              });
+              return finalAlert;
+            } catch {
+              return a;
+            }
+          }
 
           try {
             let escalated = escalateNoAck(a, nextId, Date.now());
