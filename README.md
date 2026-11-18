@@ -1,5 +1,17 @@
 # Axiom EMS - Delhi Traffic Police Emergency Corridor Coordination
 
+[![Deploy Preview](https://img.shields.io/badge/🚀_Live_Demo-Open_Axiom--EMS-blue?style=for-the-badge)](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)
+[![3-in-1 Presenter Demo](https://img.shields.io/badge/🎯_Presenter_Demo-3--in--1_Coordination-emerald?style=for-the-badge)](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)
+
+---
+
+### 🌐 Direct Launch & Deploy Links
+- **[Launch Live Cloud Application (Lovable)](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)** — One-click interactive cloud preview with live AI vision and real-time simulator.
+- **[Local 3-in-1 Judge Demo](http://127.0.0.1:3000/demo)** — Full synchronized 3-viewport demo (Control Room, Ambulance Driver HUD, Traffic Officer mobile).
+- **[GitHub Repository](https://github.com/CuriousKernel/axiom-ems-dispatch-portal)** — Source code & branch `fix-demo-flow`.
+
+---
+
 Axiom-EMS is an intelligent emergency vehicle corridor dispatch and coordination system designed for Delhi Traffic Police. It coordinates three mission-critical stakeholders in real time:
 - **Control Room Dispatcher (Laptop / Command Centre)**: Oversees corridor health, ambulance movement, AI optical queue metrics, and automated escalation.
 - **Traffic Officer (Smartphone)**: Receives instantaneous location-bound junction alerts, 3-step action workflows (Acknowledge, In Position, Verified Clear), and fail-safe escalations.
