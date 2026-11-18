@@ -118,8 +118,8 @@ function LivePage() {
       )}
 
       {/* Main 2-column layout: Big Map Left, Alert/Junction Right */}
-      <div className="grid grid-cols-[60fr_40fr] gap-4">
-        <Card className="relative min-h-[640px] overflow-hidden rounded-lg p-0 shadow-none">
+      <div className="grid grid-cols-1 xl:grid-cols-[60fr_40fr] gap-4">
+        <Card className="relative min-h-[520px] xl:min-h-[640px] overflow-hidden rounded-lg p-0 shadow-none">
           <MapFrame
             className="absolute inset-0"
             junctions={liveJunctions}
@@ -145,7 +145,7 @@ function LivePage() {
       </div>
 
       {/* Officer Roster & Event Log */}
-      <div className="grid grid-cols-[1fr_1fr] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <OfficerRoster />
         <EventLog />
       </div>
@@ -361,7 +361,7 @@ function OfficerRoster() {
                 isActiveAlert(a),
             );
 
-            // Status badge logic: STANDBY / ALERTED / ACKNOWLEDGED / IN POSITION / NO RESPONSE / ESCALATED
+            // Status badge logic: STANDBY / ALERTED / ACK / IN POS / NO REPLY / ESC
             let badgeLabel = "STANDBY";
             let badgeClass = "bg-muted text-muted-foreground";
 
@@ -370,27 +370,30 @@ function OfficerRoster() {
                 badgeLabel = "ALERTED";
                 badgeClass = "bg-critical text-white font-bold animate-pulse";
               } else if (activeAlert.state === AlertState.ACKNOWLEDGED) {
-                badgeLabel = "ACKNOWLEDGED";
+                badgeLabel = "ACK";
                 badgeClass = "bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/40";
               } else if (
                 activeAlert.state === AlertState.IN_POSITION ||
                 activeAlert.state === AlertState.CLEARING
               ) {
-                badgeLabel = "IN POSITION";
+                badgeLabel = "IN POS";
                 badgeClass = "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/40";
               } else if (activeAlert.state === AlertState.NOT_CLEARED) {
                 badgeLabel = "ESCALATED";
                 badgeClass = "bg-critical-soft text-critical-ink font-bold";
+              } else if (activeAlert.state === AlertState.ESCALATED_FINAL) {
+                badgeLabel = "CALL REQ";
+                badgeClass = "bg-critical text-white font-bold";
               }
             } else if (timedOutAlert) {
-              badgeLabel = "NO RESPONSE";
+              badgeLabel = "NO REPLY";
               badgeClass = "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/30";
             }
 
             return (
               <div
                 key={o.id}
-                className="flex items-center justify-between rounded-lg border p-2.5 bg-card hover:bg-muted/30 transition-colors"
+                className="flex items-center justify-between gap-2 rounded-lg border p-2.5 bg-card hover:bg-muted/30 transition-colors"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -402,7 +405,7 @@ function OfficerRoster() {
                   <p className="text-[11px] text-muted-foreground truncate">{j?.name}</p>
                 </div>
 
-                <span className={cn("rounded px-2 py-0.5 text-[10px] uppercase tracking-wider", badgeClass)}>
+                <span className={cn("rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0 whitespace-nowrap", badgeClass)}>
                   {badgeLabel}
                 </span>
               </div>

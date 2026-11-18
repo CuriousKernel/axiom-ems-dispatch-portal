@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
+  Camera,
   ChevronDown,
   LayoutDashboard,
   Pause,
@@ -51,6 +52,7 @@ export const Route = createFileRoute("/control")({
 
 const NAV = [
   { to: "/control", label: "Live", icon: LayoutDashboard, exact: true },
+  { to: "/control/vision", label: "Vision", icon: Camera, exact: false },
   { to: "/control/analytics", label: "Report", icon: BarChart3, exact: false },
 ] as const;
 
@@ -67,7 +69,7 @@ function ControlLayout() {
   }, [startEngine, stopEngine]);
 
   return (
-    <div className="grid min-h-screen min-w-[1200px] grid-cols-[224px_1fr] bg-background text-foreground">
+    <div className="grid min-h-screen w-full min-w-0 grid-cols-[200px_1fr] bg-background text-foreground">
       <aside className="sticky top-0 flex h-screen flex-col border-r bg-sidebar px-3 py-4">
         <div className="px-2 pb-6">
           <BrandMark />
