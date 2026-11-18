@@ -1,14 +1,14 @@
 # Axiom EMS - Delhi Traffic Police Emergency Corridor Coordination
 
-[![Deploy Preview](https://img.shields.io/badge/🚀_Live_Demo-Open_Axiom--EMS-blue?style=for-the-badge)](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)
-[![3-in-1 Presenter Demo](https://img.shields.io/badge/🎯_Presenter_Demo-3--in--1_Coordination-emerald?style=for-the-badge)](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Open_Axiom--EMS-blue?style=for-the-badge)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/)
+[![3-in-1 Presenter Demo](https://img.shields.io/badge/🎯_Presenter_Demo-3--in--1_Coordination-emerald?style=for-the-badge)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/demo)
 
 ---
 
 ### 🌐 Direct Launch & Deploy Links
-- **[Launch Live Cloud Application (Lovable)](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)** — One-click interactive cloud preview with live AI vision and real-time simulator.
-- **[Local 3-in-1 Judge Demo](http://127.0.0.1:3000/demo)** — Full synchronized 3-viewport demo (Control Room, Ambulance Driver HUD, Traffic Officer mobile).
-- **[GitHub Repository](https://github.com/CuriousKernel/axiom-ems-dispatch-portal)** — Source code & branch `fix-demo-flow`.
+- **[Launch Live Demo (GitHub Pages)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/)** — Direct one-click application launcher.
+- **[3-in-1 Presenter Demo (GitHub Pages)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/demo)** — Full synchronized 3-screen coordination (Control Room, Ambulance Driver HUD, Traffic Officer).
+- **[Cloud Development Environment](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)** — Project workspace and editor.
 
 ---
 
