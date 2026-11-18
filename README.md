@@ -1,14 +1,15 @@
 # Axiom EMS - Delhi Traffic Police Emergency Corridor Coordination
 
-[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-Open_Axiom--EMS-blue?style=for-the-badge)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/)
-[![3-in-1 Presenter Demo](https://img.shields.io/badge/🎯_Presenter_Demo-3--in--1_Coordination-emerald?style=for-the-badge)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/demo)
+[![🚀 Launch App on Web](https://img.shields.io/badge/🚀_LAUNCH_APP_ON_WEB-CLICK_HERE_TO_RUN-blue?style=for-the-badge&logo=rocket)](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com)
+[![🎯 3-in-1 Presenter Demo](https://img.shields.io/badge/🎯_3--in--1_LIVE_DEMO-RUN_NOW-emerald?style=for-the-badge)](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com/demo)
 
 ---
 
-### 🌐 Direct Launch & Deploy Links
-- **[Launch Live Demo (GitHub Pages)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/)** — Direct one-click application launcher.
-- **[3-in-1 Presenter Demo (GitHub Pages)](https://curiouskernel.github.io/axiom-ems-dispatch-portal/demo)** — Full synchronized 3-screen coordination (Control Room, Ambulance Driver HUD, Traffic Officer).
-- **[Cloud Development Environment](https://lovable.dev/projects/6181689c-b06b-4c59-abe4-e2ce69695756)** — Project workspace and editor.
+### 🌐 Direct One-Click Web Links (No Login Required)
+- **[👉 CLICK HERE TO LAUNCH AXIOM-EMS ON WEB](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com)**  
+  *Direct standalone web deployment. Anyone clicking this opens the live running app immediately.*
+- **[👉 CLICK HERE TO LAUNCH 3-IN-1 DEMO](https://6181689c-b06b-4c59-abe4-e2ce69695756.lovableproject.com/demo)**  
+  *Direct live presenter demo showing Control Room, Ambulance Driver HUD, and Traffic Officer in one screen.*
 
 ---
 
